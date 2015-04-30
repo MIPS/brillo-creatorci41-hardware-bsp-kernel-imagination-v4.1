@@ -377,7 +377,8 @@ static int img_spdif_out_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_suspend;
 
-	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
+	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL,
+			SND_DMAENGINE_PCM_FLAG_EARLY_START);
 	if (ret)
 		goto err_suspend;
 

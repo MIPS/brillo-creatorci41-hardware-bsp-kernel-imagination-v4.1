@@ -267,9 +267,38 @@ static int img_prl_out_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+int img_prl_out_start_at(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *cpu_dai, int clock_type,
+		const struct timespec *ts)
+{
+	struct img_prl_out *prl = snd_soc_dai_get_drvdata(cpu_dai);
+	unsigned long flags;
+
+	spin_lock_irqsave(&prl->lock, flags);
+	prl->active = true;
+	spin_unlock_irqrestore(&prl->lock, flags);
+
+	return 0;
+}
+
+int img_prl_out_start_at_abort(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *cpu_dai)
+{
+	struct img_prl_out *prl = snd_soc_dai_get_drvdata(cpu_dai);
+	unsigned long flags;
+
+	spin_lock_irqsave(&prl->lock, flags);
+	prl->active = false;
+	spin_unlock_irqrestore(&prl->lock, flags);
+
+	return 0;
+}
+
 static const struct snd_soc_dai_ops img_prl_out_dai_ops = {
 	.trigger = img_prl_out_trigger,
 	.hw_params = img_prl_out_hw_params,
+	.start_at = img_prl_out_start_at,
+	.start_at_abort = img_prl_out_start_at_abort
 };
 
 static int img_prl_out_dai_probe(struct snd_soc_dai *dai)
@@ -361,7 +390,8 @@ static int img_prl_out_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_suspend;
 
-	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
+	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL,
+			SND_DMAENGINE_PCM_FLAG_EARLY_START);
 	if (ret)
 		goto err_suspend;
 
