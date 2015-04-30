@@ -43,3 +43,8 @@ config SND_SOC_IMG_SPDIF_OUT
 	help
 	  Say Y or M if you want to add support for SPDIF out driver for
 	  Imagination Technologies SPDIF out device.
+
+
+config SND_SOC_IMG_PISTACHIO_EVENT_TIMER
+	tristate "Support for Pistachio SoC Event Timer Driver"
+	depends on SND_SOC_IMG
