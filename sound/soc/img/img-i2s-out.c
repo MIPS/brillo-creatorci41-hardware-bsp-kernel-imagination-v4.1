@@ -29,6 +29,7 @@
 #define IMG_I2S_OUT_TX_FIFO			0x0
 
 #define IMG_I2S_OUT_CTL				0x4
+#define IMG_I2S_OUT_CTL_EXT_EN_CLK_MASK		BIT(25)
 #define IMG_I2S_OUT_CTL_DATA_EN_MASK		BIT(24)
 #define IMG_I2S_OUT_CTL_ACTIVE_CHAN_MASK	0xffe000
 #define IMG_I2S_OUT_CTL_ACTIVE_CHAN_SHIFT	13
@@ -311,6 +312,8 @@ static int img_i2s_out_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 
 	if (force_clk_active)
 		control_set |= IMG_I2S_OUT_CTL_CLK_EN_MASK;
+	else
+		control_set |= IMG_I2S_OUT_CTL_EXT_EN_CLK_MASK;
 
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
 	case SND_SOC_DAIFMT_CBM_CFM:
@@ -352,7 +355,8 @@ static int img_i2s_out_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	control_mask = ~IMG_I2S_OUT_CTL_CLK_EN_MASK &
 		~IMG_I2S_OUT_CTL_MASTER_MASK &
 		~IMG_I2S_OUT_CTL_BCLK_POL_MASK &
-		~IMG_I2S_OUT_CTL_FRM_CLK_POL_MASK;
+		~IMG_I2S_OUT_CTL_FRM_CLK_POL_MASK &
+		~IMG_I2S_OUT_CTL_EXT_EN_CLK_MASK;
 
 	chan_control_mask = ~IMG_I2S_OUT_CHAN_CTL_CLKT_MASK;
 
@@ -386,10 +390,81 @@ static int img_i2s_out_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	return ret;
 }
 
+int img_i2s_out_start_at(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *cpu_dai, int clock_type,
+		const struct timespec *ts)
+{
+	struct img_i2s_out *i2s = snd_soc_dai_get_drvdata(cpu_dai);
+	unsigned long flags;
+	u32 reg;
+
+	spin_lock_irqsave(&i2s->lock, flags);
+
+	/*
+	 * The I2S output block contains two enable signals, clock and data.
+	 * When the clock enable is asserted, generation of the bit clock and
+	 * the first frame will begin in the next cycle of the reference
+	 * clock. When the data enable is asserted, the first samples written
+	 * to the fifo will be played in the frame after next.
+	 *
+	 * When the clock is enabled without the data, zero samples are
+	 * output. When the data is enabled without the clock, no output will
+	 * be present.
+	 *
+	 * There is a single external enable to this block, which can be used
+	 * as the clock or data enable (determined by the status of the
+	 * EXT_EN_CLK bit). Internally, the two enables are equal to an OR of
+	 * the associated register bit (DATA_EN or CLK_EN) and the external
+	 * enable for the selected enable.
+	 *
+	 * The use of the clock enable as the external enable is preferred,
+	 * as this results in higher accuracy.
+	 *
+	 * When force_clk is active, the data enable must be used as the clock
+	 * is already enabled. If force_clk is not active, set the data enable
+	 * now.
+	 */
+	if (!i2s->force_clk_active) {
+		reg = img_i2s_out_readl(i2s, IMG_I2S_OUT_CTL);
+		reg |= IMG_I2S_OUT_CTL_DATA_EN_MASK;
+		img_i2s_out_writel(i2s, reg, IMG_I2S_OUT_CTL);
+	}
+
+	i2s->active = true;
+
+	spin_unlock_irqrestore(&i2s->lock, flags);
+
+	return 0;
+}
+
+int img_i2s_out_start_at_abort(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *cpu_dai)
+{
+	struct img_i2s_out *i2s = snd_soc_dai_get_drvdata(cpu_dai);
+	unsigned long flags;
+	u32 reg;
+
+	spin_lock_irqsave(&i2s->lock, flags);
+
+	if (!i2s->force_clk_active) {
+		reg = img_i2s_out_readl(i2s, IMG_I2S_OUT_CTL);
+		reg &= ~IMG_I2S_OUT_CTL_DATA_EN_MASK;
+		img_i2s_out_writel(i2s, reg, IMG_I2S_OUT_CTL);
+	}
+
+	i2s->active = false;
+
+	spin_unlock_irqrestore(&i2s->lock, flags);
+
+	return 0;
+}
+
 static const struct snd_soc_dai_ops img_i2s_out_dai_ops = {
 	.trigger = img_i2s_out_trigger,
 	.hw_params = img_i2s_out_hw_params,
 	.set_fmt = img_i2s_out_set_fmt,
+	.start_at = img_i2s_out_start_at,
+	.start_at_abort = img_i2s_out_start_at_abort
 };
 
 static int img_i2s_out_dai_probe(struct snd_soc_dai *dai)
@@ -527,7 +602,8 @@ static int img_i2s_out_probe(struct platform_device *pdev)
 		goto err_suspend;
 
 	ret = devm_snd_dmaengine_pcm_register(&pdev->dev,
-			&img_i2s_out_dma_config, 0);
+			&img_i2s_out_dma_config,
+			SND_DMAENGINE_PCM_FLAG_EARLY_START);
 	if (ret)
 		goto err_suspend;
 
