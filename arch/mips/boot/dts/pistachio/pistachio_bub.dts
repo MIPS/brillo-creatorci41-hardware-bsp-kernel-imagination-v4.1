@@ -21,7 +21,7 @@
 	};
 
 	chosen {
-		stdout-path = &uart1;
+		bootargs = "console=ttyS1,115200n8 earlycon=uart8250,mmio32,0x18101500,115200 root=/dev/sda3 rootwait ro";
 	};
 
 	memory {
@@ -57,6 +57,10 @@
 };
 
 &uart1 {
+	status = "okay";
+};
+
+&usb {
 	status = "okay";
 };
 
