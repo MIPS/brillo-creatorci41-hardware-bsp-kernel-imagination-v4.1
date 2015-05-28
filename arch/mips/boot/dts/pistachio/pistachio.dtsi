@@ -554,6 +554,16 @@
 		status = "disabled";
 	};
 
+	usb: usb@18120000 {
+		compatible = "snps,dwc2";
+		reg = <0x18120000 0x1c000>;
+		interrupts = <GIC_SHARED 49 IRQ_TYPE_LEVEL_HIGH>;
+		phys = <&usb_phy>;
+		phy-names = "usb2-phy";
+		g-tx-fifo-size = <256 256 256 256>;
+		status = "disabled";
+	};
+
 	enet: ethernet@18140000 {
 		compatible = "img,pistachio-dwmac", "snps,dwmac";
 		reg = <0x18140000 0x2000>;
@@ -663,6 +673,17 @@
 			interrupts = <GIC_LOCAL 1 IRQ_TYPE_NONE>;
 			clocks = <&clk_core CLK_MIPS>;
 		};
+	};
+
+	usb_phy: usb-phy {
+		compatible = "img,pistachio-usb-phy";
+		clocks = <&clk_core CLK_USB_PHY>;
+		clock-names = "usb_phy";
+		assigned-clocks = <&clk_core CLK_USB_PHY_DIV>;
+		assigned-clock-rates = <50000000>;
+		img,refclk = <0x2>;
+		img,cr-top = <&cr_top>;
+		#phy-cells = <0>;
 	};
 
 	xtal: xtal {
