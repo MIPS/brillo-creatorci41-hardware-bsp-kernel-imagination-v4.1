@@ -1,0 +1,6 @@
+[gerrit]
+host=imgworks.imgtec.com
+port=29418
+project=linux_kernel
+defaultremote=origin
+defaultbranch=pistachio-4.1-rc5
