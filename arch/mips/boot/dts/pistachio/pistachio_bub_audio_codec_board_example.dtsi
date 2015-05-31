@@ -1,0 +1,163 @@
+/*
+ * Copyright (C) 2015 Imagination Technologies Ltd.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#include "pistachio.dtsi"
+#include <dt-bindings/sound/pistachio-bub-audio.h>
+
+/ {
+	supply5v0: supply5v0@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "5V-supply";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+	};
+
+	supply3v3: supply3v3@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "5V-supply";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+
+	pistachio_audio_card {
+		compatible = "img,pistachio-bub-audio";
+
+		clocks = <&clk_core CLK_AUDIO_PLL>,
+			 <&clk_core CLK_I2S_DIV>,
+			 <&clk_core CLK_AUDIO>,
+			 <&event_timer>;
+		clock-names = "audio_pll", "i2s_mclk", "dac_clk", "evt_clk";
+
+		img,daughterboard = <PISTACHIO_DAUGHTERBOARD_CODEC>;
+		img,mclk = <PISTACHIO_MCLK_DAC_CLK>;
+		img,cr-periph = <&cr_periph>;
+		img,cr-top = <&cr_top>;
+		img,event-timer = <&event_timer>;
+
+		spdif-out {
+			cpu-dai = <&spdif_out>;
+		};
+
+		spdif-in {
+			cpu-dai = <&spdif_in>;
+		};
+
+		parallel-out {
+			cpu-dai = <&parallel_out>;
+			tpa6130a2 = <&tpa6130a2>;
+		};
+
+		i2s-out {
+			cpu-dai = <&i2s_out>;
+			cpu-format = "i2s";
+			pcm3168a-1 = <&pcm3168a_1 0>;
+			pcm3168a-1-format = "i2s";
+			pcm3168a-2 = <&pcm3168a_2 0>;
+			pcm3168a-2-format = "i2s";
+			clock-master = <&i2s_out>;
+		};
+
+		i2s-in {
+			cpu-dai = <&i2s_in>;
+			cpu-format = "i2s";
+			pcm3168a-1 = <&pcm3168a_1 1>;
+			pcm3168a-1-format = "i2s";
+			pcm3168a-2 = <&pcm3168a_2 1>;
+			pcm3168a-2-format = "i2s";
+			clock-master = <&pcm3168a_2 1>;
+		};
+	};
+};
+
+&i2c2 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	pcm3168a_1: pcm3168a_1@44 {
+		compatible = "ti,pcm3168a";
+		reg = <0x44>;
+		clocks = <&clk_core CLK_AUDIO>;
+		clock-names = "scki";
+
+		assigned-clocks = <&clk_core CLK_AUDIO_PLL>,
+				  <&clk_core CLK_AUDIO_PLL_MUX>,
+				   <&clk_core CLK_AUDIO>;
+		assigned-clock-parents = <0>,
+					 <&clk_core CLK_AUDIO_PLL>,
+					 <0>;
+		assigned-clock-rates = <147456000>,
+				       <147456000>,
+				       <12288000>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&dac_clk_pin>;
+		VDD1-supply = <&supply3v3>;
+		VDD2-supply = <&supply3v3>;
+		VCCAD1-supply = <&supply5v0>;
+		VCCAD2-supply = <&supply5v0>;
+		VCCDA1-supply = <&supply5v0>;
+		VCCDA2-supply = <&supply5v0>;
+	};
+
+	pcm3168a_2: pcm3168a_2@45 {
+		compatible = "ti,pcm3168a";
+		reg = <0x45>;
+		clocks = <&clk_core CLK_AUDIO>;
+		clock-names = "scki";
+
+		assigned-clocks = <&clk_core CLK_AUDIO_PLL>,
+				  <&clk_core CLK_AUDIO_PLL_MUX>,
+				   <&clk_core CLK_AUDIO>;
+		assigned-clock-parents = <0>,
+					 <&clk_core CLK_AUDIO_PLL>,
+					 <0>;
+		assigned-clock-rates = <147456000>,
+				       <147456000>,
+				       <12288000>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&dac_clk_pin>;
+		VDD1-supply = <&supply3v3>;
+		VDD2-supply = <&supply3v3>;
+		VCCAD1-supply = <&supply5v0>;
+		VCCAD2-supply = <&supply5v0>;
+		VCCDA1-supply = <&supply5v0>;
+		VCCDA2-supply = <&supply5v0>;
+	};
+};
+
+&i2c3 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	tpa6130a2: tpa6130a2@60 {
+		compatible = "ti,tpa6130a2";
+		reg = <0x60>;
+		Vdd-supply = <&supply5v0>;
+	};
+};
+
+&i2s_out {
+	status = "okay";
+};
+
+&i2s_in {
+	status = "okay";
+};
+
+&spdif_out {
+	status = "okay";
+};
+
+&spdif_in {
+	status = "okay";
+};
+
+&parallel_out {
+	status = "okay";
+};
