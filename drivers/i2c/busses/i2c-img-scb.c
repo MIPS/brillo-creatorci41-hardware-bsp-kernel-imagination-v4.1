@@ -628,7 +628,10 @@ static void img_i2c_complete_transaction(struct img_i2c *i2c, int status)
 	img_i2c_switch_mode(i2c, MODE_INACTIVE);
 	if (status) {
 		i2c->msg_status = status;
-		img_i2c_transaction_halt(i2c, false);
+		img_i2c_soft_reset(i2c);
+	} else {
+		img_i2c_writel(i2c, SCB_INT_CLEAR_REG, ~0);
+		img_i2c_writel(i2c, SCB_CLEAR_REG, ~0);
 	}
 	complete(&i2c->msg_complete);
 }
