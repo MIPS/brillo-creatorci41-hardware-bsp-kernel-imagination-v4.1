@@ -1120,7 +1120,7 @@ static int img_i2c_init(struct img_i2c *i2c)
 		return -EINVAL;
 	}
 
-	if (rev == REL_SOC_IP_SCB_2_2_1) {
+	if (rev >= REL_SOC_IP_SCB_2_2_1) {
 		i2c->need_wr_rd_fence = true;
 		dev_info(i2c->adap.dev.parent, "fence quirk enabled");
 	}
