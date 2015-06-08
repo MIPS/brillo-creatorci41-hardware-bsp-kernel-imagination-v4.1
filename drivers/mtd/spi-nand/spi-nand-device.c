@@ -353,14 +353,14 @@ static int spi_nand_device_read_cache(struct spi_nand *snand,
 
 	memset(cmd, 0, sizeof(struct spi_nand_device_cmd));
 	cmd->n_cmd = 5;
-	cmd->cmd[0] = SPI_NAND_READ_CACHE_X2;
+	cmd->cmd[0] = SPI_NAND_READ_CACHE_X4;
 	cmd->cmd[1] = 0; /* dummy byte */
 	cmd->cmd[2] = (u8)((page_offset & 0xff00) >> 8);
 	cmd->cmd[3] = (u8)(page_offset & 0xff);
 	cmd->cmd[4] = 0; /* dummy byte */
 	cmd->n_rx = length;
 	cmd->rx_buf = read_buf;
-	cmd->rx_nbits = 2;
+	cmd->rx_nbits = 4;
 
 	dev_dbg(snand->dev, "%s: offset 0x%x\n", __func__, page_offset);
 
