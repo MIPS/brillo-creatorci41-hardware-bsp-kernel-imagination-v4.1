@@ -65,6 +65,10 @@
 #define MIN_OUTPUT_FRAC			12000000UL
 #define MAX_OUTPUT_FRAC			1600000000UL
 
+/* Fractional PLL operating modes */
+#define PLL_MODE_INT			1
+#define PLL_MODE_FRAC			0
+
 struct pistachio_clk_pll {
 	struct clk_hw hw;
 	void __iomem *base;
@@ -97,6 +101,15 @@ static inline u64 do_div_round_closest(u64 dividend, u64 divisor)
 static inline struct pistachio_clk_pll *to_pistachio_pll(struct clk_hw *hw)
 {
 	return container_of(hw, struct pistachio_clk_pll, hw);
+}
+
+static inline u32 pll_frac_get_mode(struct clk_hw *hw)
+{
+	struct pistachio_clk_pll *pll = to_pistachio_pll(hw);
+	u32 val;
+
+	val = pll_readl(pll, PLL_CTRL3) & PLL_FRAC_CTRL3_DSMPD;
+	return val ? PLL_MODE_INT : PLL_MODE_FRAC;
 }
 
 static struct pistachio_pll_rate_table *
@@ -195,7 +208,15 @@ static int pll_gf40lp_frac_set_rate(struct clk_hw *hw, unsigned long rate,
 	if (!params || !params->refdiv)
 		return -EINVAL;
 
-	vco = div64_u64(params->fref * params->fbdiv, params->refdiv);
+	/* get operating mode and calculate vco accordingly */
+	vco = params->fref;
+	if (pll_frac_get_mode(hw) == PLL_MODE_INT)
+		vco *= params->fbdiv << 24;
+	else
+		vco *= (params->fbdiv << 24) + params->frac;
+
+	vco = div64_u64(vco, params->refdiv << 24);
+
 	if (vco < MIN_VCO_FRAC_FRAC || vco > MAX_VCO_FRAC_FRAC)
 		pr_warn("%s: VCO %llu is out of range %lu..%lu\n", name, vco,
 			MIN_VCO_FRAC_FRAC, MAX_VCO_FRAC_FRAC);
@@ -267,8 +288,13 @@ static unsigned long pll_gf40lp_frac_recalc_rate(struct clk_hw *hw,
 		PLL_FRAC_CTRL2_POSTDIV2_MASK;
 	frac = (val >> PLL_FRAC_CTRL2_FRAC_SHIFT) & PLL_FRAC_CTRL2_FRAC_MASK;
 
+	/* get operating mode (int/frac) and calculate rate accordingly */
 	rate = parent_rate;
-	rate *= (fbdiv << 24) + frac;
+	if (pll_frac_get_mode(hw) == PLL_MODE_FRAC)
+		rate *= (fbdiv << 24) + frac;
+	else
+		rate *= (fbdiv << 24);
+
 	rate = do_div_round_closest(rate, (prediv * postdiv1 * postdiv2) << 24);
 
 	return rate;
