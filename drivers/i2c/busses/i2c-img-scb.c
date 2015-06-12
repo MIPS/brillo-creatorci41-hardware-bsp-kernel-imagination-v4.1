@@ -1153,6 +1153,12 @@ static int img_i2c_init(struct img_i2c *i2c)
 			break;
 		}
 	}
+	if (i2c->bitrate > timing.max_bitrate) {
+		dev_err(i2c->adap.dev.parent,
+			 "requested bitrate (%d) not supported\n",
+			 i2c->bitrate);
+		return -EINVAL;
+	}
 
 	/* Find the prescale that would give us that inc (approx delay = 0) */
 	prescale = SCB_OPT_INC * clk_khz / (256 * 16 * bitrate_khz);
