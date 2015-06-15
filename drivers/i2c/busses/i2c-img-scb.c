@@ -905,8 +905,11 @@ static unsigned int img_i2c_auto(struct img_i2c *i2c,
 	if (i2c->msg.flags & I2C_M_RD) {
 		if (int_status & INT_FIFO_FULL_FILLING) {
 			img_i2c_read_fifo(i2c);
-			if (i2c->msg.len == 0)
-				return ISR_WAITSTOP;
+			if (i2c->msg.len == 0) {
+				if (i2c->last_msg)
+					return ISR_WAITSTOP;
+				return ISR_COMPLETE(0);
+			}
 		}
 	} else {
 		if (int_status & INT_FIFO_EMPTY_EMPTYING) {
