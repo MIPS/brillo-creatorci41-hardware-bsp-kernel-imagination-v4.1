@@ -913,16 +913,11 @@ static unsigned int img_i2c_auto(struct img_i2c *i2c,
 		}
 	} else {
 		if (int_status & INT_FIFO_EMPTY_EMPTYING) {
-			/*
-			 * The write fifo empty indicates that we're in the
-			 * last byte so it's safe to start a new write
-			 * transaction without losing any bytes from the
-			 * previous one.
-			 * see 2.3.7 Repeated Start Transactions.
-			 */
-			if ((int_status & INT_FIFO_EMPTY) &&
-			    i2c->msg.len == 0)
-				return ISR_WAITSTOP;
+			if (i2c->msg.len == 0) {
+				if (i2c->last_msg)
+					return ISR_WAITSTOP;
+				return ISR_COMPLETE(0);
+			}
 			img_i2c_write_fifo(i2c);
 		}
 	}
