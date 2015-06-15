@@ -527,7 +527,17 @@ static void img_i2c_soft_reset(struct img_i2c *i2c)
 	img_i2c_writel(i2c, SCB_INT_MASK_REG, i2c->int_enable);
 }
 
-/* enable or release transaction halt for control of repeated starts */
+/*
+ * Enable or release transaction halt for control of repeated starts.
+ * In version 3.3 of the IP when transaction halt is set, an interrupt
+ * will be generated after each byte of a transfer instead of after
+ * every transfer but before the stop bit.
+ * Due to this behaviour we have to be careful that every time we
+ * release the transaction halt we have to re-enable it straight away
+ * so that we only process a single byte, not doing so will result in
+ * all remaining bytes been processed and a stop bit being issued,
+ * which will prevent us having a repeated start.
+ */
 static void img_i2c_transaction_halt(struct img_i2c *i2c, bool t_halt)
 {
 	u32 val;
@@ -596,7 +606,6 @@ static void img_i2c_read(struct img_i2c *i2c)
 	img_i2c_writel(i2c, SCB_READ_ADDR_REG, i2c->msg.addr);
 	img_i2c_writel(i2c, SCB_READ_COUNT_REG, i2c->msg.len);
 
-	img_i2c_transaction_halt(i2c, false);
 	mod_timer(&i2c->check_timer, jiffies + msecs_to_jiffies(1));
 }
 
@@ -610,7 +619,6 @@ static void img_i2c_write(struct img_i2c *i2c)
 	img_i2c_writel(i2c, SCB_WRITE_ADDR_REG, i2c->msg.addr);
 	img_i2c_writel(i2c, SCB_WRITE_COUNT_REG, i2c->msg.len);
 
-	img_i2c_transaction_halt(i2c, false);
 	mod_timer(&i2c->check_timer, jiffies + msecs_to_jiffies(1));
 	img_i2c_write_fifo(i2c);
 
@@ -1084,12 +1092,31 @@ static int img_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 		i2c->last_msg = (i == num - 1);
 		reinit_completion(&i2c->msg_complete);
 
-		if (atomic)
+		if (atomic) {
 			img_i2c_atomic_start(i2c);
-		else if (msg->flags & I2C_M_RD)
-			img_i2c_read(i2c);
-		else
-			img_i2c_write(i2c);
+		} else {
+			/*
+			 * Enable transaction halt if not the last message in
+			 * the queue so that we can control repeated starts.
+			 */
+			img_i2c_transaction_halt(i2c, !i2c->last_msg);
+
+			if (msg->flags & I2C_M_RD)
+				img_i2c_read(i2c);
+			else
+				img_i2c_write(i2c);
+
+			/*
+			 * By releasing and then enabling transaction halt,
+			 * trying to allow only a single byte to proceed.
+			 * This doesn't have an effect on the initial transfer
+			 * but will allow the following transfers to start
+			 * processing if the previous transfer was marked as
+			 * complete while the i2c block was halted.
+			 */
+			img_i2c_transaction_halt(i2c, false);
+			img_i2c_transaction_halt(i2c, !i2c->last_msg);
+		}
 		spin_unlock_irqrestore(&i2c->lock, flags);
 
 		time_left = wait_for_completion_timeout(&i2c->msg_complete,
