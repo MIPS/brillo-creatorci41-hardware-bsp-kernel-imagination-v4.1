@@ -1099,6 +1099,7 @@ static int img_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 		if (time_left == 0) {
 			dev_err(adap->dev.parent, "i2c transfer timed out\n");
 			i2c->msg_status = -ETIMEDOUT;
+			img_i2c_soft_reset(i2c);
 			break;
 		}
 
