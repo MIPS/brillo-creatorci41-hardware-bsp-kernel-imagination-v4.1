@@ -151,6 +151,7 @@
 #define INT_FIFO_EMPTYING		BIT(12)
 #define INT_TRANSACTION_DONE		BIT(15)
 #define INT_SLAVE_EVENT			BIT(16)
+#define INT_MASTER_HALTED		BIT(17)
 #define INT_TIMING			BIT(18)
 #define INT_STOP_DETECTED		BIT(19)
 
@@ -177,6 +178,7 @@
 					 INT_FIFO_FULL        | \
 					 INT_FIFO_FILLING     | \
 					 INT_FIFO_EMPTY       | \
+					 INT_MASTER_HALTED    | \
 					 INT_STOP_DETECTED)
 
 #define INT_ENABLE_MASK_WAITSTOP	(INT_SLAVE_EVENT      | \
@@ -903,6 +905,17 @@ static unsigned int img_i2c_auto(struct img_i2c *i2c,
 	mod_timer(&i2c->check_timer, jiffies + msecs_to_jiffies(1));
 
 	if (i2c->msg.flags & I2C_M_RD) {
+		if (int_status & INT_MASTER_HALTED) {
+			img_i2c_read_fifo(i2c);
+			if (i2c->msg.len == 0)
+				return ISR_COMPLETE(0);
+			/*
+			 * By releasing and then enabling transaction halt,
+			 * trying to allow only a single byte to proceed.
+			 */
+			img_i2c_transaction_halt(i2c, false);
+			img_i2c_transaction_halt(i2c, !i2c->last_msg);
+		}
 		if (int_status & INT_FIFO_FULL_FILLING) {
 			img_i2c_read_fifo(i2c);
 			if (i2c->msg.len == 0) {
@@ -924,6 +937,18 @@ static unsigned int img_i2c_auto(struct img_i2c *i2c,
 			return ISR_COMPLETE(ret);
 		}
 	} else {
+		if (int_status & INT_MASTER_HALTED) {
+			if ((int_status & INT_FIFO_EMPTY) &&
+					i2c->msg.len == 0)
+				return ISR_COMPLETE(0);
+			img_i2c_write_fifo(i2c);
+			/*
+			 * By releasing and then enabling transaction halt,
+			 * trying to allow only a single byte to proceed.
+			 */
+			img_i2c_transaction_halt(i2c, false);
+			img_i2c_transaction_halt(i2c, !i2c->last_msg);
+		}
 		if (int_status & INT_FIFO_EMPTY) {
 			if (i2c->msg.len == 0) {
 				if (i2c->last_msg)
