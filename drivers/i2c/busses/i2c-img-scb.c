@@ -152,6 +152,7 @@
 #define INT_TRANSACTION_DONE		BIT(15)
 #define INT_SLAVE_EVENT			BIT(16)
 #define INT_TIMING			BIT(18)
+#define INT_STOP_DETECTED		BIT(19)
 
 #define INT_FIFO_FULL_FILLING	(INT_FIFO_FULL  | INT_FIFO_FILLING)
 
@@ -175,7 +176,8 @@
 					 INT_WRITE_ACK_ERR    | \
 					 INT_FIFO_FULL        | \
 					 INT_FIFO_FILLING     | \
-					 INT_FIFO_EMPTY)
+					 INT_FIFO_EMPTY       | \
+					 INT_STOP_DETECTED)
 
 #define INT_ENABLE_MASK_WAITSTOP	(INT_SLAVE_EVENT      | \
 					 INT_ADDR_ACK_ERR     | \
@@ -909,6 +911,18 @@ static unsigned int img_i2c_auto(struct img_i2c *i2c,
 				return ISR_COMPLETE(0);
 			}
 		}
+		if (int_status & INT_STOP_DETECTED) {
+			int ret;
+			/*
+			 * Stop bit indicates the end of the transfer, it means
+			 * we should read all the data (or drain the FIFO). We
+			 * must signal completion for this transaction.
+			 */
+			img_i2c_transaction_halt(i2c, false);
+			img_i2c_read_fifo(i2c);
+			ret = (i2c->msg.len == 0) ? 0 : EIO;
+			return ISR_COMPLETE(ret);
+		}
 	} else {
 		if (int_status & INT_FIFO_EMPTY) {
 			if (i2c->msg.len == 0) {
@@ -917,6 +931,18 @@ static unsigned int img_i2c_auto(struct img_i2c *i2c,
 				return ISR_COMPLETE(0);
 			}
 			img_i2c_write_fifo(i2c);
+		}
+		if (int_status & INT_STOP_DETECTED) {
+			int ret;
+
+			img_i2c_transaction_halt(i2c, false);
+			/*
+			 * Stop bit indicates the end of a transfer and if the
+			 * transfer has finished before all data is written to
+			 * the fifo return error with transfer complete signal.
+			 */
+			ret = (i2c->msg.len == 0) ? 0 : EIO;
+			return ISR_COMPLETE(ret);
 		}
 	}
 
