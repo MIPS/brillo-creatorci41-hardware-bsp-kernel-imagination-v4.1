@@ -242,7 +242,7 @@
 		reg = <0x18100f00 0x100>;
 		interrupts = <GIC_SHARED 22 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&clk_core CLK_SPI0>, <&cr_periph SYS_CLK_SPI0_MASTER>;
-		clock-names = "spfi", "sys";
+		clock-names = "sys", "spfi";
 		dmas = <&mdc 9 0xffffffff 0>, <&mdc 10 0xffffffff 0>;
 		dma-names = "rx", "tx";
 		spi-max-frequency = <50000000>;
@@ -257,7 +257,7 @@
 		reg = <0x18101000 0x100>;
 		interrupts = <GIC_SHARED 26 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&clk_core CLK_SPI1>, <&cr_periph SYS_CLK_SPI1>;
-		clock-names = "spfi", "sys";
+		clock-names = "sys", "spfi";
 		dmas = <&mdc 1 0xffffffff 0>, <&mdc 2 0xffffffff 0>;
 		dma-names = "rx", "tx";
 		img,supports-quad-mode;
