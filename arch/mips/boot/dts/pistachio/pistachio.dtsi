@@ -11,6 +11,7 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/mips-gic.h>
+#include <dt-bindings/reset-controller/pistachio-resets.h>
 
 / {
 	compatible = "img,pistachio";
@@ -41,6 +42,47 @@
 				416000 800000
 			>;
 		};
+	};
+
+	uccp: bt-uccp@0 {
+		compatible = "img,pistachio-uccp-base";
+		/* RPU system bus */
+		reg = <0x18480000 0x40000>;
+		status = "disabled";
+		interrupts = <GIC_SHARED 67 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&clk_core CLK_RPU_CORE>,
+			<&clk_core CLK_BT>,
+			<&clk_core CLK_BT_DIV4>,
+			<&clk_core CLK_BT_DIV8>;
+		clock-names = "rpu_core",
+			"bt",
+			"bt_div4",
+			"bt_div8";
+		assigned-clocks = <&clk_core CLK_BT_PLL_MUX>,
+			<&clk_core CLK_RPU_CORE_DIV>,
+			<&clk_core CLK_BT_DIV>,
+			<&clk_core CLK_BT_DIV4_DIV>,
+			<&clk_core CLK_BT_DIV8_DIV>,
+			<&clk_core CLK_BT_PLL>;
+		assigned-clock-parents = <&clk_core CLK_BT_PLL>;
+		assigned-clock-rates = <0>,
+			<52000000>,
+			<104000000>,
+			<26000000>,
+			<13000000>,
+			<0>;
+
+		#address-cells = <1>;
+		#size-cells = <1>;
+	};
+
+	bt: bt@0 {
+		compatible = "img,pistachio-uccp-bt";
+		reg = <0x1A000000 0x1000>;
+		status = "disabled";
+
+		#address-cells = <1>;
+		#size-cells = <1>;
 	};
 
 	i2c0: i2c@18100000 {
@@ -76,7 +118,6 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 	};
-
 
 	i2c2: i2c@18100400 {
 		compatible = "img,scb-i2c";
@@ -143,7 +184,8 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&i2s_out_pins>;
 		status = "disabled";
-
+		resets = <&pistachio_reset PISTACHIO_RESET_I2S_OUT>;
+		reset-names = "rst";
 		#sound-dai-cells = <0>;
 	};
 
@@ -159,7 +201,8 @@
 		assigned-clocks = <&clk_core CLK_AUDIO_DAC_DIV>;
 		assigned-clock-rates = <12288000>;
 		status = "disabled";
-
+		resets = <&pistachio_reset PISTACHIO_RESET_PRL_OUT>;
+		reset-names = "rst";
 		#sound-dai-cells = <0>;
 	};
 
@@ -177,7 +220,8 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&spdif_out_pin>;
 		status = "disabled";
-
+		resets = <&pistachio_reset PISTACHIO_RESET_SPDIF_OUT>;
+		reset-names = "rst";
 		#sound-dai-cells = <0>;
 	};
 
@@ -196,15 +240,44 @@
 		#sound-dai-cells = <0>;
 	};
 
+	event_timer: event_timer@18102300 {
+		compatible = "img,pistachio-event-timer";
+		reg = <0x18102300 0x400>;
+
+		assigned-clocks = <&clk_core CLK_AUDIO_PLL>,
+				  <&clk_core CLK_AUDIO_PLL_MUX>,
+				  <&clk_core CLK_EVENT_TIMER_MUX>;
+		assigned-clock-parents = <0>,
+					 <&clk_core CLK_AUDIO_PLL>,
+					 <&clk_core CLK_AUDIO_PLL_MUX>;
+		assigned-clock-rates = <147456000>,
+				       <147456000>,
+				       <12288000>;
+
+		interrupts = <GIC_SHARED 53 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SHARED 54 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SHARED 55 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SHARED 56 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SHARED 57 IRQ_TYPE_LEVEL_HIGH>;
+
+		#clock-cells = <0>;
+		clocks = <&cr_periph SYS_CLK_EVENT_TIMER>,
+			 <&clk_core CLK_AUDIO>,
+			 <&clk_core CLK_EVENT_TIMER>;
+		clock-names = "sys","ref0","ref1";
+		img,clk-select = <1>;
+		img,clk-rate = <12288000>;
+	};
+
 	spfi0: spi@18100f00 {
 		compatible = "img,spfi";
 		reg = <0x18100f00 0x100>;
 		interrupts = <GIC_SHARED 22 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&clk_core CLK_SPI0>, <&cr_periph SYS_CLK_SPI0_MASTER>;
-		clock-names = "spfi", "sys";
+		clock-names = "sys", "spfi";
 		dmas = <&mdc 9 0xffffffff 0>, <&mdc 10 0xffffffff 0>;
 		dma-names = "rx", "tx";
-		spi-max-frequency = <50000000>;
+		spfi-max-frequency = <50000000>;
 		status = "disabled";
 
 		#address-cells = <1>;
@@ -216,11 +289,11 @@
 		reg = <0x18101000 0x100>;
 		interrupts = <GIC_SHARED 26 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&clk_core CLK_SPI1>, <&cr_periph SYS_CLK_SPI1>;
-		clock-names = "spfi", "sys";
+		clock-names = "sys", "spfi";
 		dmas = <&mdc 1 0xffffffff 0>, <&mdc 2 0xffffffff 0>;
 		dma-names = "rx", "tx";
 		img,supports-quad-mode;
-		spi-max-frequency = <50000000>;
+		spfi-max-frequency = <50000000>;
 		status = "disabled";
 
 		#address-cells = <1>;
@@ -630,6 +703,13 @@
 			};
 		};
 
+		i2s_mclk_pin: i2s-mclk-pin {
+			i2s-mclk {
+				pins = "mfio36";
+				function = "i2s_out";
+			};
+		};
+
 		spdif_out_pin: spdif-out-pin {
 			spdif-out {
 				pins = "mfio61";
@@ -642,13 +722,6 @@
 			spdif-in {
 				pins = "mfio62";
 				function = "spdif_in";
-			};
-		};
-
-		i2s_mclk_pin: i2s-mclk-pin {
-			i2s-mclk {
-				pins = "mfio36";
-				function = "i2s_out";
 			};
 		};
 
@@ -709,25 +782,6 @@
 		pinctrl-names = "default";
 		status = "disabled";
 	};
-
-	event_timer: event_timer@18102300 {
-                compatible = "img,pistachio-event-timer";
-                reg = <0x18102300 0x400>;
-                assigned-clocks = <&clk_core CLK_EVENT_TIMER_MUX>;
-                assigned-clock-parents = <&clk_core CLK_AUDIO_PLL_MUX>;
-                interrupts = <GIC_SHARED 53 IRQ_TYPE_LEVEL_HIGH>,
-			<GIC_SHARED 54 IRQ_TYPE_LEVEL_HIGH>,
-			<GIC_SHARED 55 IRQ_TYPE_LEVEL_HIGH>,
-			<GIC_SHARED 56 IRQ_TYPE_LEVEL_HIGH>,
-			<GIC_SHARED 57 IRQ_TYPE_LEVEL_HIGH>;
-                #clock-cells = <0>;
-                clocks = <&cr_periph SYS_CLK_EVENT_TIMER>,
-			<&clk_core CLK_AUDIO>,
-			<&clk_core CLK_EVENT_TIMER>;
-                clock-names = "sys","ref0","ref1";
-                img,clk-select = <1>;
-                img,clk-rate = <12288000>;
-        };
 
 	usb: usb@18120000 {
 		compatible = "snps,dwc2";
@@ -824,6 +878,12 @@
 		compatible = "img,pistachio-cr-top", "syscon";
 		reg = <0x18149000 0x200>;
 		#clock-cells = <1>;
+	};
+
+	pistachio_reset: reset-controller {
+		compatible = "img,pistachio-reset";
+		img,cr-periph = <&cr_periph>;
+		#reset-cells = <1>;
 	};
 
 	fuse@18149200 {
