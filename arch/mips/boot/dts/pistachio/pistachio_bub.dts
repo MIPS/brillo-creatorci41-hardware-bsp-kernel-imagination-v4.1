@@ -9,7 +9,7 @@
 
 /dts-v1/;
 
-#include "pistachio.dtsi"
+#include "pistachio_bub_audio_no_daughterboard_example.dtsi"
 
 / {
 	model = "IMG Pistachio BuB";
