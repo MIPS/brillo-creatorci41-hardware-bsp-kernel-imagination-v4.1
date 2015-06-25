@@ -2,7 +2,7 @@
 host=imgworks.imgtec.com
 port=29418
 project=linux_kernel
-defaultremote=origin
+defaultremote=imgsystems
 defaultbranch=4.1-imgsystems
 defaultrebase=0
 defaultdraft=1
