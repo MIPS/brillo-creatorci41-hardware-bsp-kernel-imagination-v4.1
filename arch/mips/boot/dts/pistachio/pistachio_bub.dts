@@ -72,6 +72,9 @@
 &uccpbthp {
 	status = "okay";
 };
+
+&uccpdummyhp {
+	status = "okay";
 };
 
 &uart0 {

@@ -148,6 +148,11 @@
 		#size-cells = <1>;
 	};
 
+	uccpdummyhp: uccp-dummy-hostport@0 {
+		compatible = "img,pistachio-uccp-dummy";
+		status = "disabled";
+	};
+
 	i2c0: i2c@18100000 {
 		compatible = "img,scb-i2c";
 		reg = <0x18100000 0x200>;
