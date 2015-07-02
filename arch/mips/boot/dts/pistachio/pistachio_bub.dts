@@ -61,12 +61,17 @@
 	};
 };
 
-&uccp {
-    status = "okay";
+&uccpsystem {
+	status = "okay";
 };
 
-&bt {
-    status = "okay";
+&uccphostport {
+	status = "okay";
+};
+
+&uccpbthp {
+	status = "okay";
+};
 };
 
 &uart0 {
