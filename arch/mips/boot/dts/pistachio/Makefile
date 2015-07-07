@@ -1,4 +1,4 @@
-dtb-$(CONFIG_MACH_PISTACHIO)	+= pistachio_bub.dtb pistachio_buranku.dtb pistachio_fpga.dtb pistachio_kennet.dtb
+dtb-$(CONFIG_MACH_PISTACHIO)	+= pistachio_bub.dtb pistachio_buranku.dtb pistachio_fpga.dtb pistachio_kennet.dtb pistachio_ci40.dtb
 
 obj-y				+= $(patsubst %.dtb, %.dtb.o, $(dtb-y))
 
