@@ -34,6 +34,7 @@
 
 #include <linux/time.h>
 #include <linux/sort.h>
+#include <linux/etherdevice.h>
 
 #include "hal.h"
 #include "hal_hostport.h"
@@ -495,9 +496,6 @@ static void rx_tasklet_fn(unsigned long data)
 				new_skb = alloc_skb(max_data_size, GFP_ATOMIC);
 
 				if (!new_skb) {
-					pr_err("%s Failed to initialize RX buf %d\n",
-					       hal_name, pkt_desc);
-
 					/* If allocation fails, drop the packet,
 					 * continue
 					 */
@@ -545,10 +543,7 @@ static void rx_tasklet_fn(unsigned long data)
 				 */
 				nbuf = alloc_skb(sizeof(struct cmd_hal),
 						 GFP_ATOMIC);
-				if (!nbuf) {
-					pr_err("%s Out of memory\n", hal_name);
-				} else {
-
+				if (nbuf) {
 					cmd_data = skb_put(nbuf,
 						   sizeof(struct cmd_hal));
 
@@ -618,8 +613,6 @@ static void rx_tasklet_fn(unsigned long data)
 			priv->rcv_handler(skb, LMAC_MOD_ID);
 		}
 	}
-
-	return;
 }
 
 
@@ -708,8 +701,6 @@ static irqreturn_t hal_irq_handler(int    irq, void  *p)
 		skb = dev_alloc_skb(event_len);
 
 		if (!skb) {
-			pr_err("%s: Alloc SKB Failed for %ld\n",
-			       hal_name, event_len);
 			*((unsigned long *)event_status_addr) = 0;
 		} else {
 			*(unsigned long *)(skb->cb) = event_addr;
@@ -779,8 +770,6 @@ static void hal_enable_int(void  *p)
 	value |= BIT(UCCP_CORE_INT_EN_SHIFT);
 	writel(*((unsigned long *)&(value)),
 	       (void __iomem *)(UCCP_CORE_INT_ENABLE_ADDR));
-
-	return;
 }
 
 
@@ -799,8 +788,6 @@ static void hal_disable_int(void  *p)
 	value &= ~(BIT(UCCP_CORE_INT_EN_SHIFT));
 	writel(*((unsigned long *)&(value)),
 	       (void __iomem *)(UCCP_CORE_INT_ENABLE_ADDR));
-
-	return;
 }
 
 
@@ -1075,10 +1062,8 @@ static int cleanup_all_resources(void)
 			   hpriv->uccp_pkd_gram_len);
 
 	/* Unmap UCCP Host RAM */
-	if (hpriv->base_addr_uccp_host_ram) {
-		kfree (hpriv->base_addr_uccp_host_ram);
-		hpriv->base_addr_uccp_host_ram = NULL;
-	}
+	kfree(hpriv->base_addr_uccp_host_ram);
+	hpriv->base_addr_uccp_host_ram = NULL;
 
 	kfree(hpriv);
 	return 0;
@@ -1155,7 +1140,8 @@ static int uccp420_pltfr_probe(struct platform_device *pdev)
 
 		conv_str_to_byte(vif_macs[0], mac_addr, ETH_ALEN);
 
-		memcpy(&vif_macs[1], &vif_macs[0], ETH_ALEN);
+		ether_addr_copy(vif_macs[1], vif_macs[0]);
+
 		vif_macs[1][5]++;
 	}
 
@@ -1170,9 +1156,6 @@ static int uccp420_pltfr_probe(struct platform_device *pdev)
 
 	if (pp && pp->value)
 		num_streams_vpd = *((int *)pp->value);
-
-	clk_set_rate(devm_clk_get(&pdev->dev, "wifi_pll"), 320000000);
-	clk_set_rate(devm_clk_get(&pdev->dev, "rpu_core_div"), 320000000);
 
 	clk_prepare_enable(devm_clk_get(&pdev->dev, "rpu_core"));
 	clk_prepare_enable(devm_clk_get(&pdev->dev, "rpu_l"));
@@ -1195,6 +1178,22 @@ static int uccp420_pltfr_probe(struct platform_device *pdev)
 	return ret;
 }
 
+static int uccp420_pltfr_remove(struct platform_device *pdev)
+{
+	clk_disable_unprepare(devm_clk_get(&pdev->dev, "rpu_core"));
+	clk_disable_unprepare(devm_clk_get(&pdev->dev, "rpu_l"));
+	clk_disable_unprepare(devm_clk_get(&pdev->dev, "rpu_v"));
+	clk_disable_unprepare(devm_clk_get(&pdev->dev, "rpu_sleep"));
+	clk_disable_unprepare(devm_clk_get(&pdev->dev, "wifi_adc"));
+	clk_disable_unprepare(devm_clk_get(&pdev->dev, "wifi_dac"));
+
+	clk_disable_unprepare(devm_clk_get(&pdev->dev, "event_timer"));
+	clk_disable_unprepare(devm_clk_get(&pdev->dev, "sys_event_timer"));
+	clk_disable_unprepare(devm_clk_get(&pdev->dev, "aux_adc"));
+	clk_disable_unprepare(devm_clk_get(&pdev->dev, "aux_adc_internal"));
+
+	return 0;
+}
 
 static const struct of_device_id uccp420_dt_ids[] = {
 	{ .compatible = "img,pistachio-uccp"},
@@ -1204,6 +1203,7 @@ MODULE_DEVICE_TABLE(of, uccp420_dt_ids);
 
 struct platform_driver img_uccp_driver = {
 	.probe = uccp420_pltfr_probe,
+	.remove = uccp420_pltfr_remove,
 	.driver = {
 		.name     = "uccp420",
 		.owner    = THIS_MODULE,
@@ -1352,9 +1352,6 @@ static int hal_init(void *dev)
 						 GFP_KERNEL);
 
 	if (!hpriv->base_addr_uccp_host_ram) {
-		pr_err("%s: Alloc for UCCP DMA area failed\n",
-		       __func__);
-
 		iounmap((void __iomem *)hpriv->uccp_base_addr);
 		release_mem_region(hpriv->uccp_core_base,
 				   hpriv->uccp_core_len);
@@ -1507,8 +1504,6 @@ static void hal_deinit_bufs(void)
 
 	hpriv->hal_disabled = 1;
 	tasklet_enable(&hpriv->rx_tasklet);
-
-	return;
 }
 
 
@@ -1598,10 +1593,8 @@ static int hal_init_bufs(unsigned int tx_bufs,
 
 		nbuf = alloc_skb(sizeof(struct cmd_hal), GFP_ATOMIC);
 
-		if (!nbuf) {
-			pr_err("%s out of memory\n", hal_name);
+		if (!nbuf)
 			goto err;
-		}
 
 		memcpy(skb_put(nbuf, sizeof(struct cmd_hal)),
 		       (unsigned char *)&cmd_rx, sizeof(struct cmd_hal));
@@ -1630,6 +1623,11 @@ int hal_map_tx_buf(int pkt_desc, int frame_id, unsigned char *data, int len)
 
 	dma_addr_t dma_buf = 0;
 
+	/* For QoS Null frames we dont try to map the frame since the data len
+	 * will be 0 and there is nothing for the FW to process */
+	if (len == 0)
+		return 0;
+
 	/* Sanity check */
 	dma_buf = ((struct buf_info)(hpriv->tx_buf_info[index])).dma_buf;
 
@@ -1651,7 +1649,7 @@ int hal_map_tx_buf(int pkt_desc, int frame_id, unsigned char *data, int len)
 		}
 		for (i = 0; i < 80; i++) {
 			pr_debug("%s: RX: descriptor: %d dma_buf: 0x%x\n",
-				 __func__, i , hpriv->rx_buf_info[i].dma_buf);
+				 __func__, i, hpriv->rx_buf_info[i].dma_buf);
 		}
 
 		return -1;
@@ -1688,6 +1686,12 @@ int hal_map_tx_buf(int pkt_desc, int frame_id, unsigned char *data, int len)
 int hal_unmap_tx_buf(int pkt_desc, int frame_id)
 {
 	unsigned int index = (pkt_desc * NUM_FRAMES_IN_TX_DESC) + frame_id;
+
+	/* For QoS Null frames we did not map the frame (since the data len
+	 * will be 0 and there is nothing for the FW to process), hence no need
+	 * to try and unmap */
+	if (!hpriv->tx_buf_info[index].dma_buf_len)
+		return 0;
 
 	/* Sanity check */
 	if (!hpriv->tx_buf_info[index].dma_buf) {
@@ -1811,7 +1815,6 @@ static int init_rx_buf(int pkt_desc,
 }
 void hal_set_mem_region(unsigned int addr)
 {
-	return;
 }
 void hal_request_mem_regions(unsigned char **gram_addr,
 			     unsigned char **slave_addr,

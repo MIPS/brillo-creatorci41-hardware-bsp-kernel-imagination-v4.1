@@ -19,45 +19,21 @@
  *** Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
  *** USA.
  ***
- *** File Name  : img-transport.h
+ *** File Name  : img-connectivity.h
  ***
  *** File Description:
- *** This file contains interface definition of the low level IMG transport
- *** mechanism.
+ *** This file contains public definitions specific to UCCP base driver
  ***
  ******************************************************************************
  *END**************************************************************************/
+#ifndef __IMG_CONNECTIVITY_H
+#define __IMG_CONNECTIVITY_H 1
 
+struct img_version_info {
+	int bt;
+	int wlan;
+};
 
-#ifndef __IMG_TRANSPORT_H__
-#define __IMG_TRANSPORT_H__
+struct img_version_info img_connectivity_version(void);
 
-#include <linux/types.h>
-
-/*
- * Note that this procedure is going to be executed
- * in the interrupt context, so it has to be as lean
- * as possible and should preferably defer all heavy
- * lifting.
- */
-typedef void (*img_transport_handler)(u16 user_data);
-
-int img_transport_notify(u16 user_data);
-
-/*
- * Possible return values:
- *  @ -ENOBUFS  : all handler slots in use
- *  @ -EBADSLT  : id unavailable
- *  @  0        : callback registered
- */
-int img_transport_register_callback(img_transport_handler,
-					unsigned int client_id);
-
-/*
- * Possible return values:
- * @ -EIDRM    : client id not found
- * @  0        : callback removed
- */
-int img_transport_remove_callback(unsigned int client_id);
-
-#endif
+#endif /* __IMG_CONNECTIVITY_H */

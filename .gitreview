@@ -1,6 +1,6 @@
 [gerrit]
 host=imgworks.imgtec.com
 port=29418
-project=linux_kernel
+project=danube/linux
 defaultremote=origin
-defaultbranch=pistachio-4.1-rc5
+defaultbranch=pistachio-4.1
