@@ -557,21 +557,14 @@ static int atu_adjtimex(struct timex *txc)
 	int ret=0;
 	unsigned long flags;
 
-	spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
-	if (!patu_clk_mtner->atu_timecntr.cc) {
-		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
-		return -EFAULT;
-	}
-
 	if (patu_clk_mtner->clk_atu) {
 
 		if (txc->modes & ADJ_SETOFFSET) {
+			spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
 			ret = atu_set_time_offset(txc);
-			if (ret) {
-				spin_unlock_irqrestore(
-					&patu_clk_mtner->atu_clk_lock, flags);
-				return ret;
-			}
+			spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock,
+									flags);
+			return ret;
 		}
 
 		if (txc->modes & ADJ_FREQUENCY) {
@@ -600,9 +593,11 @@ static int atu_adjtimex(struct timex *txc)
 		}
 
 	} else {
-		ret = __atu_adjtimex(txc, &patu_clk_mtner->atu_ntp);
+		spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
+		if (patu_clk_mtner->atu_timecntr.cc)
+			ret = __atu_adjtimex(txc, &patu_clk_mtner->atu_ntp);
+		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 	}
-	spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 
 	return ret;
 }
