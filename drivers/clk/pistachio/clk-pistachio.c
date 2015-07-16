@@ -92,8 +92,8 @@ static struct pistachio_div pistachio_divs[] __initdata = {
 	DIV(CLK_SPI1_DIV, "spi1_div", "spi1_internal_div", 0x254, 7),
 	DIV(CLK_EVENT_TIMER_INTERNAL_DIV, "event_timer_internal_div",
 	    "event_timer_mux", 0x258, 3),
-	DIV(CLK_EVENT_TIMER_DIV, "event_timer_div", "event_timer_internal_div",
-	    0x25c, 12),
+	DIV_F(CLK_EVENT_TIMER_DIV, "event_timer_div", "event_timer_internal_div",
+	    0x25c, 12, CLK_SET_RATE_PARENT, 0),
 	DIV(CLK_AUX_ADC_INTERNAL_DIV, "aux_adc_internal_div",
 	    "aux_adc_internal", 0x260, 3),
 	DIV(CLK_AUX_ADC_DIV, "aux_adc_div", "aux_adc_internal_div", 0x264, 10),
@@ -168,11 +168,35 @@ static struct pistachio_pll_rate_table wifi_pll_rates[] = {
 	},
 };
 
+static struct pistachio_pll_rate_table audio_pll_rates[] = {
+	{
+		.fref		= 52000000,
+		.fout_min	= 146250000,
+		.fout		= 147456000,
+		.fout_max	= 149499999,
+		.refdiv		= 0x1,
+		.fbdiv		= 0x2d,
+		.frac		= 0x5efee6,
+		.postdiv1	= 0x4,
+		.postdiv2	= 0x4,
+	}, {
+		.fref		= 52000000,
+		.fout_min	= 133250000,
+		.fout		= 135475200,
+		.fout_max	= 136500000,
+		.refdiv		= 0x1,
+		.fbdiv		= 0x29,
+		.frac		= 0xaf46fd,
+		.postdiv1	= 0x4,
+		.postdiv2	= 0x4,
+	},
+};
+
 static struct pistachio_pll pistachio_plls[] __initdata = {
 	PLL(CLK_MIPS_PLL, "mips_pll", "xtal", PLL_GF40LP_LAINT, 0x0,
 	    mips_pll_rates),
-	PLL_FIXED(CLK_AUDIO_PLL, "audio_pll", "audio_refclk_mux",
-		  PLL_GF40LP_FRAC, 0xc),
+	PLL(CLK_AUDIO_PLL, "audio_pll", "audio_refclk_mux", PLL_GF40LP_FRAC,
+	    0xc, audio_pll_rates),
 	PLL_FIXED(CLK_RPU_V_PLL, "rpu_v_pll", "xtal", PLL_GF40LP_LAINT, 0x20),
 	PLL_FIXED(CLK_RPU_L_PLL, "rpu_l_pll", "xtal", PLL_GF40LP_LAINT, 0x2c),
 	PLL_FIXED(CLK_SYS_PLL, "sys_pll", "xtal", PLL_GF40LP_FRAC, 0x38),
@@ -186,9 +210,15 @@ PNAME(mux_debug) = { "mips_pll_mux", "rpu_v_pll_mux",
 		     "wifi_pll_mux", "bt_pll_mux" };
 static u32 mux_debug_idx[] = { 0x0, 0x1, 0x2, 0x4, 0x8, 0x10 };
 
-static unsigned int pistachio_critical_clks[] __initdata = {
-	CLK_MIPS,
-	CLK_PERIPH_SYS,
+static unsigned int pistachio_critical_clks_core[] __initdata = {
+	CLK_MIPS
+};
+
+static unsigned int pistachio_critical_clks_sys[] __initdata = {
+	PERIPH_CLK_SYS,
+	PERIPH_CLK_SYS_BUS,
+	PERIPH_CLK_DDR,
+	PERIPH_CLK_ROM,
 };
 
 static void __init pistachio_clk_init(struct device_node *np)
@@ -220,8 +250,8 @@ static void __init pistachio_clk_init(struct device_node *np)
 
 	pistachio_clk_register_provider(p);
 
-	pistachio_clk_force_enable(p, pistachio_critical_clks,
-				   ARRAY_SIZE(pistachio_critical_clks));
+	pistachio_clk_force_enable(p, pistachio_critical_clks_core,
+				   ARRAY_SIZE(pistachio_critical_clks_core));
 }
 CLK_OF_DECLARE(pistachio_clk, "img,pistachio-clk", pistachio_clk_init);
 
@@ -288,6 +318,9 @@ static void __init pistachio_clk_periph_init(struct device_node *np)
 				    ARRAY_SIZE(pistachio_periph_gates));
 
 	pistachio_clk_register_provider(p);
+
+	pistachio_clk_force_enable(p, pistachio_critical_clks_sys,
+				   ARRAY_SIZE(pistachio_critical_clks_sys));
 }
 CLK_OF_DECLARE(pistachio_clk_periph, "img,pistachio-clk-periph",
 	       pistachio_clk_periph_init);
