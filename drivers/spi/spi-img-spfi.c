@@ -442,13 +442,15 @@ static int img_spfi_setup(struct spi_device *spi)
 {
 	int ret;
 
-	ret = gpio_request_one(spi->cs_gpio, (spi->mode & SPI_CS_HIGH) ?
-			       GPIOF_OUT_INIT_LOW : GPIOF_OUT_INIT_HIGH,
-			       dev_name(&spi->dev));
-	if (ret)
-		dev_err(&spi->dev, "can't request chipselect gpio %d\n",
-				spi->cs_gpio);
+	if (gpio_is_valid(spi->cs_gpio)) {
+		int mode = ((spi->mode & SPI_CS_HIGH) ?
+			     GPIOF_OUT_INIT_LOW : GPIOF_OUT_INIT_HIGH);
 
+		ret = gpio_direction_output(spi->cs_gpio, mode);
+		if (ret)
+			dev_err(&spi->dev, "chipselect gpio %d setup failed (%d)\n",
+				spi->cs_gpio, ret);
+	}
 	return ret;
 }
 
