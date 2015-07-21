@@ -38,9 +38,10 @@
 #include <linux/types.h>
 #include <linux/workqueue.h>
 
+#include <soc/img/img-transport.h>
+
 #include "circ-buf-ext.h"
 #include "gateway.h"
-#include "img-transport.h"
 #include "payload.h"
 
 static const char *client_name = "img-bt";
