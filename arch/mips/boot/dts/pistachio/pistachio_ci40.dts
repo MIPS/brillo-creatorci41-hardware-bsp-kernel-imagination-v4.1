@@ -8,7 +8,7 @@
 
 /dts-v1/;
 
-#include "pistachio.dtsi"
+#include "pistachio_ci40_audio.dtsi"
 
 / {
 	model = "IMG Ci40";
