@@ -11,8 +11,8 @@
 #include "pistachio.dtsi"
 
 / {
-	model = "IMG Ci40";
-	compatible = "img,pistachio-ci40", "img,pistachio";
+	model = "IMG Marduk";
+	compatible = "img,pistachio-marduk", "img,pistachio";
 
 	aliases {
 		serial0 = &uart0;
