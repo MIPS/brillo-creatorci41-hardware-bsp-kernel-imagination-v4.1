@@ -289,6 +289,7 @@ int img_prl_out_start_at_abort(struct snd_pcm_substream *substream,
 
 	spin_lock_irqsave(&prl->lock, flags);
 	prl->active = false;
+	img_prl_out_reset(prl);
 	spin_unlock_irqrestore(&prl->lock, flags);
 
 	return 0;

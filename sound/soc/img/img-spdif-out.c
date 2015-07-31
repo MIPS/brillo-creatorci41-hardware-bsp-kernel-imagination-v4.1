@@ -281,9 +281,24 @@ static int img_spdif_out_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+int img_spdif_out_start_at_abort(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *cpu_dai)
+{
+	struct img_spdif_out *spdif = snd_soc_dai_get_drvdata(cpu_dai);
+	unsigned long flags;
+
+	spin_lock_irqsave(&spdif->lock, flags);
+	img_spdif_out_reset(spdif);
+	spin_unlock_irqrestore(&spdif->lock, flags);
+
+	return 0;
+}
+
+
 static const struct snd_soc_dai_ops img_spdif_out_dai_ops = {
 	.trigger = img_spdif_out_trigger,
-	.hw_params = img_spdif_out_hw_params
+	.hw_params = img_spdif_out_hw_params,
+	.start_at_abort = img_spdif_out_start_at_abort
 };
 
 static int img_spdif_out_dai_probe(struct snd_soc_dai *dai)
