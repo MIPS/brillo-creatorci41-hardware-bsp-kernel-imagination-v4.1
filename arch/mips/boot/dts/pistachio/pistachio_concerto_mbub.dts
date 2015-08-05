@@ -13,7 +13,7 @@
 #include <dt-bindings/sound/pistachio-bub-audio.h>
 
 / {
-	model = "IMG Pistachio Concerto";
+	model = "IMG Pistachio Concerto mBuB";
 	compatible = "img,pistachio-bub", "img,pistachio";
 
 	aliases {
