@@ -33,15 +33,14 @@
 #define MAX_KEY_LEN 16
 #define MAX_VIFS 2
 
-#ifdef UNIFORM_BW_SHARING
 #define MAX_PEERS 3
 /* Additional queue for unicast frames directed to non-associated peers (for
- * e.g. Probe Responses etc) */
+ * e.g. Probe Responses etc)
+ */
 #define MAX_PEND_Q_PER_AC (MAX_PEERS + MAX_VIFS)
 
 #ifdef MULTI_CHAN_SUPPORT
 #define MAX_CHANCTX 2
-#endif
 #endif
 
 #define WEP40_KEYLEN 5

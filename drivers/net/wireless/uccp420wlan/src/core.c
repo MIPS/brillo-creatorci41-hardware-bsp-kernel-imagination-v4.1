@@ -259,6 +259,9 @@ static void vif_bcn_timer_expiry(unsigned long data)
 	struct sk_buff *skb, *temp;
 	struct sk_buff_head bcast_frames;
 	unsigned long flags;
+#ifdef MULTI_CHAN_SUPPORT
+	int curr_chanctx_idx = -1;
+#endif
 
 	if (uvif->vif->bss_conf.enable_beacon == false)
 		return;
@@ -293,8 +296,20 @@ static void vif_bcn_timer_expiry(unsigned long data)
 
 		spin_lock_irqsave(&uvif->dev->bcast_lock, flags);
 
+#ifdef MULTI_CHAN_SUPPORT
+		spin_lock(&uvif->dev->chanctx_lock);
+		curr_chanctx_idx = uvif->dev->curr_chanctx_idx;
+		spin_unlock(&uvif->dev->chanctx_lock);
+#endif
+
 		while ((skb = skb_dequeue(&bcast_frames)))
-			uccp420wlan_tx_frame(skb, NULL, uvif->dev, true);
+			uccp420wlan_tx_frame(skb,
+					     NULL,
+					     uvif->dev,
+#ifdef MULTI_CHAN_SUPPORT
+					     curr_chanctx_idx,
+#endif
+					     true);
 
 		spin_unlock_irqrestore(&uvif->dev->bcast_lock, flags);
 
@@ -304,7 +319,18 @@ static void vif_bcn_timer_expiry(unsigned long data)
 		if (!skb)
 			goto reschedule_timer;
 
-		uccp420wlan_tx_frame(skb, NULL, uvif->dev, true);
+#ifdef MULTI_CHAN_SUPPORT
+		spin_lock_bh(&uvif->dev->chanctx_lock);
+		curr_chanctx_idx = uvif->dev->curr_chanctx_idx;
+		spin_unlock_bh(&uvif->dev->chanctx_lock);
+#endif
+		uccp420wlan_tx_frame(skb,
+				     NULL,
+				     uvif->dev,
+#ifdef MULTI_CHAN_SUPPORT
+				     curr_chanctx_idx,
+#endif
+				     true);
 
 	}
 reschedule_timer:
@@ -908,6 +934,9 @@ void uccp420wlan_noa_event(int event, struct umac_event_noa *noa, void *context,
 	struct umac_vif *uvif;
 	unsigned long flags;
 	bool transmit = false;
+#ifdef MULTI_CHAN_SUPPORT
+	int curr_chanctx_idx = -1;
+#endif
 
 	rcu_read_lock();
 
@@ -970,8 +999,20 @@ void uccp420wlan_noa_event(int event, struct umac_event_noa *noa, void *context,
 
 	rcu_read_unlock();
 
-	if (transmit)
-		uccp420wlan_tx_frame(skb, NULL, dev, false);
+	if (transmit) {
+#ifdef MULTI_CHAN_SUPPORT
+		spin_lock_bh(&dev->chanctx_lock);
+		curr_chanctx_idx = dev->curr_chanctx_idx;
+		spin_unlock_bh(&dev->chanctx_lock);
+#endif
+		uccp420wlan_tx_frame(skb,
+				     NULL,
+				     dev,
+#ifdef MULTI_CHAN_SUPPORT
+				     curr_chanctx_idx,
+#endif
+				     false);
+	}
 }
 
 #if 0
@@ -1020,11 +1061,7 @@ void uccp420wlan_proc_ch_sw_event(struct umac_event_ch_switch *ch_sw_info,
 	int curr_bit = 0;
 	int pool_id = 0;
 	int ret = 0;
-#ifdef UNIFORM_BW_SHARING
 	int peer_id = -1;
-#else
-	int pkts_pend = 0;
-#endif
 	int ac = 0;
 	struct ieee80211_chanctx_conf *curr_chanctx = NULL;
 	struct tx_config *tx = NULL;
@@ -1062,11 +1099,13 @@ void uccp420wlan_proc_ch_sw_event(struct umac_event_ch_switch *ch_sw_info,
 
 
 	/* Switch to the new channel context */
-	/* SDK: Take care of locking requirements for these elements */
+	spin_lock(&dev->chanctx_lock);
 	dev->curr_chanctx_idx = chan_id;
+	spin_unlock(&dev->chanctx_lock);
 
 	/* We now try to xmit any frames whose xmission got cancelled due to a
-	 * previous channel switch */
+	 * previous channel switch
+	 */
 	for (i = 0; i < NUM_TX_DESCS; i++) {
 		spin_lock_irqsave(&tx->lock, flags);
 
@@ -1078,25 +1117,19 @@ void uccp420wlan_proc_ch_sw_event(struct umac_event_ch_switch *ch_sw_info,
 			continue;
 		}
 
-
-		txq = &tx->pkt_info[dev->curr_chanctx_idx][i].pkt;
+		txq = &tx->pkt_info[chan_id][i].pkt;
 		txq_len = skb_queue_len(txq);
-		queue = tx->pkt_info[dev->curr_chanctx_idx][i].queue;
+		queue = tx->pkt_info[chan_id][i].queue;
 
 		if (!txq_len) {
 			/* Reserved token */
 			if (i < (NUM_TX_DESCS_PER_AC * NUM_ACS)) {
 				queue = (i % NUM_ACS);
-#ifdef UNIFORM_BW_SHARING
-				peer_id = get_curr_peer_opp(dev, queue);
+				peer_id = get_curr_peer_opp(dev,
+							    chan_id,
+							    queue);
 
 				if (peer_id == -1) {
-#else
-				pkts_pend =
-					skb_queue_len(&tx->pending_pkt[queue]);
-
-				if (!pkts_pend) {
-#endif
 					/* Mark the token as available */
 					__clear_bit(curr_bit,
 						    &tx->buf_pool_bmp[pool_id]);
@@ -1109,23 +1142,17 @@ void uccp420wlan_proc_ch_sw_event(struct umac_event_ch_switch *ch_sw_info,
 			/* Spare token */
 			} else {
 				for (ac = WLAN_AC_VO; ac >= 0; ac--) {
-#ifdef UNIFORM_BW_SHARING
-					peer_id = get_curr_peer_opp(dev, ac);
+					peer_id = get_curr_peer_opp(dev,
+								    chan_id,
+								    ac);
 
 					if (peer_id != -1) {
-#else
-					pkts_pend =
-					   skb_queue_len(&tx->pending_pkt[ac]);
-
-					if (pkts_pend) {
-#endif
 						queue = ac;
 						break;
 					}
 				}
 
 				if (ac < 0) {
-
 					/* Mark the token as available */
 					__clear_bit(curr_bit,
 						    &tx->buf_pool_bmp[pool_id]);
@@ -1138,9 +1165,8 @@ void uccp420wlan_proc_ch_sw_event(struct umac_event_ch_switch *ch_sw_info,
 
 			uccp420wlan_tx_proc_pend_frms(dev,
 						      queue,
-#ifdef UNIFORM_BW_SHARING
+						      chan_id,
 						      peer_id,
-#endif
 						      i);
 
 			tx->outstanding_tokens[queue]++;
@@ -1152,21 +1178,24 @@ void uccp420wlan_proc_ch_sw_event(struct umac_event_ch_switch *ch_sw_info,
 		ret = __uccp420wlan_tx_frame(dev,
 					     queue,
 					     i,
+					     chan_id,
 					     0); /* TODO: Currently sending 0
 						    since this param is not used
 						    as expected in the orig
 						    code for multiple frames etc
 						    Need to set this
 						    properly when the orig code
-						    logic is corrected */
+						    logic is corrected
+						  */
 		if (ret < 0) {
 			/* SDK: Check if we need to clear the TX bitmap and
-			 * desc_chan_map here */
+			 * desc_chan_map here
+			 */
 			pr_err("%s: Queueing of TX frame to FW failed\n",
 			       __func__);
 		} else {
 			spin_lock_irqsave(&tx->lock, flags);
-			tx->desc_chan_map[i] = dev->curr_chanctx_idx;
+			tx->desc_chan_map[i] = chan_id;
 			spin_unlock_irqrestore(&tx->lock, flags);
 		}
 
