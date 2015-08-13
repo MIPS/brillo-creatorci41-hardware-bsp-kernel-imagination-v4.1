@@ -31,6 +31,7 @@
 
 #include <linux/export.h>
 #include <linux/interrupt.h>
+#include <linux/jiffies.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/of.h>
@@ -67,9 +68,10 @@ static const char *hal_name = "img-hostport";
 #define CALLEE(reg) ((reg & CALLEE_MASK) >> CALLEE_SHIFT)
 #define CALLER(reg) (reg & CALLER_MASK)
 #define USERMSG(reg) ((reg & USERMSG_MASK) >> USERMSG_SHIFT)
+#define IS_BUSY(reg) (ioread32(reg) & 0x80000000)
 #define mtx_int_en_WIDTH 4
 
-DEFINE_SEMAPHORE(host_to_uccp_core_lock);
+DEFINE_SPINLOCK(host_to_uccp_core_lock);
 
 /*
  * Forward declarations
@@ -100,8 +102,12 @@ EXPORT_SYMBOL(img_transport_register_callback);
 
 void img_transport_notify(u16 user_data, int user_id)
 {
-	down(&host_to_uccp_core_lock);
+	unsigned long flags;
+	spin_lock_irqsave(&host_to_uccp_core_lock, flags);
+	while(IS_BUSY(H2C_CMD_ADDR(module->vbase)))
+		continue;
 	notify_common(user_data, user_id);
+	spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
 }
 EXPORT_SYMBOL(img_transport_notify);
 
@@ -109,10 +115,17 @@ int __must_check img_transport_notify_timeout(u16 user_data,
 					int user_id,
 					long jiffies_timeout)
 {
-	if (-ETIME == down_timeout(&host_to_uccp_core_lock, jiffies_timeout)) {
-		return -ETIME;
+	unsigned long start_time = jiffies, flags;
+	spin_lock_irqsave(&host_to_uccp_core_lock, flags);
+	while(IS_BUSY(H2C_CMD_ADDR(module->vbase))) {
+		if (time_after_eq(start_time + jiffies_timeout, jiffies)) {
+			spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
+			return -ETIME;
+		}
 	}
+
 	notify_common(user_data, user_id);
+	spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
 	return 0;
 }
 EXPORT_SYMBOL(img_transport_notify_timeout);
@@ -142,6 +155,7 @@ static u8 id_to_field(int id)
 
 static void notify_common(u16 user_data, int user_id)
 {
+	dbgn("snd -- %d:%d:%02X", user_id, user_id, user_data);
 	iowrite32(0x87 << 24 | user_data << 8 | id_to_field(user_id),
 			(void __iomem *)H2C_CMD_ADDR(module->vbase));
 }
@@ -173,10 +187,17 @@ static irqreturn_t hal_irq_handler(int    irq, void  *p)
 	callee_id = CALLEE(reg_value);
 	caller_id = CALLER(reg_value);
 	user_message = USERMSG(reg_value);
+	dbgn("rcv -- %d:%d:%02X", callee_id, caller_id, user_message);
+
 	/*
-	 * We are ready to release the spinlock
-	 * once we get the all zeros message.
+	 * Send ACK to the RPU
 	 *
+	 * ACKs have to be sent to ID = 1 (RPU Bluetooth) for now. That will
+	 * change to COMMON_HOST_ID.
+	 */
+	img_transport_notify(0, 1);
+
+	/*
 	 * callee_id is tainted, therefore must be checked.
 	 */
 	if (callee_id > MAX_ENDPOINT_ID) {
@@ -184,31 +205,14 @@ static irqreturn_t hal_irq_handler(int    irq, void  *p)
 		return IRQ_HANDLED;
 	}
 
-	if (COMMON_HOST_ID == callee_id) {
-		switch (user_message) {
-		case 0:
-			/*
-			 * now H2C_CMD_ADDR can
-			 * be written to again
-			 */
-			up(&host_to_uccp_core_lock);
-			break;
-		default:
-			errn("unexpected controller message, dropping :");
-			errn("\tcallee_id : %d", callee_id);
-			errn("\tcaller_id : %d", caller_id);
-			errn("\tuser_message : %d", user_message);
-		}
-	} else {
-		handler = module->endpoints.f[callee_id];
-		handler_in_use = module->endpoints.in_use + callee_id;
-		if (NULL != handler) {
-			spin_lock_irqsave(handler_in_use, flags);
-			handler((u16)user_message);
-			spin_unlock_irqrestore(handler_in_use, flags);
-		} else
-			errn("endpoint with id = %u not registered", callee_id);
-	}
+	handler = module->endpoints.f[callee_id];
+	handler_in_use = module->endpoints.in_use + callee_id;
+	if (NULL != handler) {
+		spin_lock_irqsave(handler_in_use, flags);
+		handler((u16)user_message);
+		spin_unlock_irqrestore(handler_in_use, flags);
+	} else
+		errn("endpoint with id = %u not registered", callee_id);
 
 	return IRQ_HANDLED;
 }
@@ -383,6 +387,14 @@ static int img_hostport_pltfr_probe(struct platform_device *pdev)
 
 	dbg("activating hostport interrupt");
 	img_hostport_irq_on();
+
+	dbg("releasing C2H register");
+	/*
+	 * We send this to ID = 1 (RPU Bluetooth) to be compatible with the
+	 * other side. This should be changed to COMMON_HOST_ID sometime in the
+	 * future.
+	 */
+	img_transport_notify(0, 1);
 
 	dbg("hostport driver registration completed");
 	return result;
