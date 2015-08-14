@@ -83,6 +83,9 @@ extern int uccp420wlan_proc_tx(void);
 
 extern int uccp420wlan_prog_tx(unsigned int queue,
 			       unsigned int more_data,
+#ifdef MULTI_CHAN_SUPPORT
+			       int curr_chanctx_idx,
+#endif
 			       unsigned int tokenid);
 
 extern int uccp420wlan_sta_add(int index,
@@ -254,6 +257,9 @@ extern void uccp420wlan_proc_tx_complete(struct umac_event_tx_done *txdone,
 				    void *context);
 
 extern void uccp420wlan_tx_complete(struct umac_event_tx_done *txdone,
+#ifdef MULTI_CHAN_SUPPORT
+				    int curr_chanctx_idx,
+#endif
 				    void *context);
 
 extern void uccp420wlan_rx_frame(struct sk_buff *skb,

@@ -1272,6 +1272,8 @@ int snd_pcm_start_at(struct snd_pcm_substream *substream,
 		ret = snd_pcm_startat_audio(substream,
 			start_at->clock_type,
 			&start_at->start_time);
+		if(ret)
+			snd_pcm_startat_audio_cancel(substream);
 		break;
 	default:
 		ret = -EINVAL;

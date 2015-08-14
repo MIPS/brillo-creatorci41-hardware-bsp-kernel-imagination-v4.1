@@ -445,15 +445,8 @@ int img_i2s_out_start_at_abort(struct snd_pcm_substream *substream,
 	u32 reg;
 
 	spin_lock_irqsave(&i2s->lock, flags);
-
-	if (!i2s->force_clk_active) {
-		reg = img_i2s_out_readl(i2s, IMG_I2S_OUT_CTL);
-		reg &= ~IMG_I2S_OUT_CTL_DATA_EN_MASK;
-		img_i2s_out_writel(i2s, reg, IMG_I2S_OUT_CTL);
-	}
-
 	i2s->active = false;
-
+	img_i2s_out_reset(i2s);
 	spin_unlock_irqrestore(&i2s->lock, flags);
 
 	return 0;

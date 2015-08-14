@@ -43,6 +43,8 @@
 #include <linux/spinlock.h>
 #include <linux/clk.h>
 
+#include <soc/img/img-connectivity.h>
+
 #include "img-hostport.h"
 
 static struct img_hostport *module;
@@ -85,7 +87,7 @@ int img_transport_register_callback(
 	/*
 	 * Make sure that the slot is free, i.e. null
 	 */
-	if (client_id > MAX_ENDPOINT_ID || module->endpoints.f[client_id])
+	if (0 == client_id || client_id > MAX_ENDPOINT_ID || module->endpoints.f[client_id])
 		return -EBADSLT;
 
 	spin_lock(module->endpoints.in_use + client_id);
@@ -428,6 +430,12 @@ static void __exit img_hostport_leave(void)
 
 static int __init img_hostport_entry(void)
 {
+	/*
+	 * The following line is here purely to make sure that the current
+	 * module depends on img-connectivity when it's loaded as a module.
+	 */
+	 img_connectivity_version();
+
 	return platform_driver_probe(&img_uccp_driver,
 					img_hostport_pltfr_probe);
 }

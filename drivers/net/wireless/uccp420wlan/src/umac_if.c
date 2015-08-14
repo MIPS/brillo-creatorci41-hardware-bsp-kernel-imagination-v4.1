@@ -1289,6 +1289,9 @@ int uccp420wlan_prog_ps_state(int index,
 
 int uccp420wlan_prog_tx(unsigned int queue,
 			unsigned int more_frms,
+#ifdef MULTI_CHAN_SUPPORT
+			int curr_chanctx_idx,
+#endif
 			unsigned int descriptor_id)
 {
 	struct cmd_tx_ctrl tx_cmd;
@@ -1305,9 +1308,6 @@ int uccp420wlan_prog_tx(unsigned int queue,
 	int vif_index;
 	__u16 fc;
 	unsigned long irq_flags, tx_irq_flags;
-#ifdef MULTI_CHAN_SUPPORT
-	int chan_id = 0;
-#endif
 
 	memset(&tx_cmd, 0, sizeof(struct cmd_tx_ctrl));
 
@@ -1323,7 +1323,7 @@ int uccp420wlan_prog_tx(unsigned int queue,
 	dev = p->context;
 	spin_lock_irqsave(&dev->tx.lock, tx_irq_flags);
 #ifdef MULTI_CHAN_SUPPORT
-	txq = &dev->tx.pkt_info[dev->curr_chanctx_idx][descriptor_id].pkt;
+	txq = &dev->tx.pkt_info[curr_chanctx_idx][descriptor_id].pkt;
 #else
 	txq = &dev->tx.pkt_info[descriptor_id].pkt;
 #endif
@@ -1452,9 +1452,9 @@ int uccp420wlan_prog_tx(unsigned int queue,
 
 		/* Need it for tx_status later */
 #ifdef MULTI_CHAN_SUPPORT
-		dev->tx.pkt_info[dev->curr_chanctx_idx][descriptor_id].hdr_len =
+		dev->tx.pkt_info[curr_chanctx_idx][descriptor_id].hdr_len =
 			hdrlen;
-		dev->tx.pkt_info[dev->curr_chanctx_idx][descriptor_id].queue =
+		dev->tx.pkt_info[curr_chanctx_idx][descriptor_id].queue =
 			queue;
 #else
 		dev->tx.pkt_info[descriptor_id].hdr_len = hdrlen;
@@ -1492,10 +1492,10 @@ int uccp420wlan_prog_tx(unsigned int queue,
 #endif
 
 		/* SDK: Check if we can use the same txq initialized before in
-		 * the function here */
+		 * the function here
+		 */
 #ifdef MULTI_CHAN_SUPPORT
-		chan_id = dev->curr_chanctx_idx;
-		txq = &dev->tx.pkt_info[chan_id][descriptor_id].pkt;
+		txq = &dev->tx.pkt_info[curr_chanctx_idx][descriptor_id].pkt;
 #else
 		txq = &dev->tx.pkt_info[descriptor_id].pkt;
 #endif
@@ -1974,8 +1974,8 @@ int uccp420wlan_prog_econ_ps_state(int if_index,
 #endif
 
 
-int uccp420wlan_msg_handler (void *nbuff,
-			     unsigned char sender_id)
+int uccp420wlan_msg_handler(void *nbuff,
+			    unsigned char sender_id)
 {
 	unsigned int event;
 	unsigned char *buff;
@@ -1985,6 +1985,9 @@ int uccp420wlan_msg_handler (void *nbuff,
 	struct sk_buff *pending_cmd;
 	unsigned long irq_flags;
 	struct mac80211_dev *dev;
+#ifdef MULTI_CHAN_SUPPORT
+	int curr_chanctx_idx = -1;
+#endif
 
 	rcu_read_lock();
 
@@ -2070,7 +2073,15 @@ int uccp420wlan_msg_handler (void *nbuff,
 			 */
 			dev->stats->tx_done_recv_count++;
 
+#ifdef MULTI_CHAN_SUPPORT
+			spin_lock(&dev->chanctx_lock);
+			curr_chanctx_idx = dev->curr_chanctx_idx;
+			spin_unlock(&dev->chanctx_lock);
+#endif
 			uccp420wlan_tx_complete((void *)buff,
+#ifdef MULTI_CHAN_SUPPORT
+						curr_chanctx_idx,
+#endif
 						p->context);
 		}
 
@@ -2162,7 +2173,8 @@ int uccp420wlan_msg_handler (void *nbuff,
 		uccp420wlan_rf_calib_data(rf_data, p->context);
 #ifdef MULTI_CHAN_SUPPORT
 	/* SDK: Need to see if this will work in tasklet context (due to
-	 * scheduling latencies) */
+	 * scheduling latencies)
+	 */
 	} else if (event == UMAC_EVENT_CHAN_SWITCH) {
 		uccp420wlan_proc_ch_sw_event((void *)buff,
 					     p->context);

@@ -1035,13 +1035,6 @@ static int soc_pcm_start_at(struct snd_pcm_substream *substream,
 	struct snd_soc_dai *codec_dai;
 	int i, ret;
 
-	if (rtd->dai_link->ops && rtd->dai_link->ops->start_at) {
-		ret = rtd->dai_link->ops->start_at(substream,
-			audio_clock_type, start_time);
-		if (ret < 0)
-			return ret;
-	}
-
 	for (i = 0; i < rtd->num_codecs; i++) {
 		codec_dai = rtd->codec_dais[i];
 		if (codec_dai->driver->ops &&
@@ -1067,6 +1060,13 @@ static int soc_pcm_start_at(struct snd_pcm_substream *substream,
 			return ret;
 	}
 
+	if (rtd->dai_link->ops && rtd->dai_link->ops->start_at) {
+		ret = rtd->dai_link->ops->start_at(substream,
+			audio_clock_type, start_time);
+		if (ret < 0)
+			return ret;
+	}
+
 	return 0;
 }
 
@@ -1077,12 +1077,6 @@ static int soc_pcm_start_at_abort(struct snd_pcm_substream *substream)
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct snd_soc_dai *codec_dai;
 	int i, ret;
-
-	if (rtd->dai_link->ops && rtd->dai_link->ops->start_at_abort) {
-		ret = rtd->dai_link->ops->start_at_abort(substream);
-		if (ret < 0)
-			return ret;
-	}
 
 	for (i = 0; i < rtd->num_codecs; i++) {
 		codec_dai = rtd->codec_dais[i];
@@ -1103,6 +1097,12 @@ static int soc_pcm_start_at_abort(struct snd_pcm_substream *substream)
 
 	if (cpu_dai->driver->ops && cpu_dai->driver->ops->start_at_abort) {
 		ret = cpu_dai->driver->ops->start_at_abort(substream, cpu_dai);
+		if (ret < 0)
+			return ret;
+	}
+
+	if (rtd->dai_link->ops && rtd->dai_link->ops->start_at_abort) {
+		ret = rtd->dai_link->ops->start_at_abort(substream);
 		if (ret < 0)
 			return ret;
 	}

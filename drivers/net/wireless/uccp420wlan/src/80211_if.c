@@ -287,6 +287,9 @@ static void tx(struct ieee80211_hw *hw,
 	unsigned char *pktgen_magic;
 	unsigned int orig_pktgen_magic = 0x55e99bbe; /*Endianness 0xbe9be955*/
 	struct umac_event_noa noa_event;
+#ifdef MULTI_CHAN_SUPPORT
+	int curr_chanctx_idx = -1;
+#endif
 
 	if (tx_info->control.vif == NULL) {
 		pr_debug("%s: Dropping injected TX frame\n",
@@ -337,13 +340,18 @@ static void tx(struct ieee80211_hw *hw,
 
 #ifdef MULTI_CHAN_SUPPORT
 	spin_lock_bh(&dev->chanctx_lock);
-#endif
-
-	uccp420wlan_tx_frame(skb, txctl->sta, dev, false);
-
-#ifdef MULTI_CHAN_SUPPORT
+	curr_chanctx_idx = dev->curr_chanctx_idx;
 	spin_unlock_bh(&dev->chanctx_lock);
 #endif
+
+	uccp420wlan_tx_frame(skb,
+			     txctl->sta,
+			     dev,
+#ifdef MULTI_CHAN_SUPPORT
+			     curr_chanctx_idx,
+#endif
+			     false);
+
 	return;
 
 tx_status:
@@ -1040,8 +1048,9 @@ static void bss_info_changed(struct ieee80211_hw *hw,
 	mutex_lock(&dev->mutex);
 
 	if (wifi->params.production_test || wifi->params.disable_beacon_ibss) {
-		/*Disable beacon generation when running pktgen
-		 *for performance*/
+		/* Disable beacon generation when running pktgen
+		 * for performance
+		 */
 		changed &= ~BSS_CHANGED_BEACON_INT;
 		changed &= ~BSS_CHANGED_BEACON_ENABLED;
 	}
@@ -1195,9 +1204,7 @@ static void init_hw(struct ieee80211_hw *hw)
 	/* Size */
 	hw->extra_tx_headroom = 0;
 	hw->vif_data_size = sizeof(struct umac_vif);
-#ifdef UNIFORM_BW_SHARING
 	hw->sta_data_size = sizeof(struct umac_sta);
-#endif
 #ifdef MULTI_CHAN_SUPPORT
 	hw->chanctx_data_size = sizeof(struct umac_chanctx);
 #endif
@@ -1866,7 +1873,6 @@ int sta_add(struct ieee80211_hw *hw,
 	struct peer_sta_info peer_st_info = {0};
 	int i;
 	int result = 0;
-#ifdef UNIFORM_BW_SHARING
 	struct mac80211_dev *dev = hw->priv;
 	struct umac_sta *usta = (struct umac_sta *)sta->drv_priv;
 	unsigned int peer_id = 0;
@@ -1883,7 +1889,6 @@ int sta_add(struct ieee80211_hw *hw,
 		return -1;
 	}
 
-#endif
 
 	for (i = 0; i < STA_NUM_BANDS; i++)
 		peer_st_info.supp_rates[i] = sta->supp_rates[i];
@@ -1916,15 +1921,15 @@ int sta_add(struct ieee80211_hw *hw,
 
 	result = uccp420wlan_sta_add(uvif->vif_index, &peer_st_info);
 
-#ifdef UNIFORM_BW_SHARING
 	if (!result) {
 		rcu_assign_pointer(dev->peers[peer_id], sta);
 		synchronize_rcu();
 
 		usta->index = peer_id;
+#ifdef MULTI_CHAN_SUPPORT
 		usta->chanctx = uvif->chanctx;
-	}
 #endif
+	}
 
 	return result;
 }
@@ -1938,24 +1943,20 @@ int sta_remove(struct ieee80211_hw *hw,
 	struct peer_sta_info peer_st_info = {0};
 	int i;
 	int result = 0;
-#ifdef UNIFORM_BW_SHARING
 	struct mac80211_dev *dev = hw->priv;
 	struct umac_sta *usta = (struct umac_sta *)sta->drv_priv;
-#endif
 
 	for (i = 0; i < ETH_ALEN; i++)
 		peer_st_info.addr[i] = sta->addr[i];
 
 	result = uccp420wlan_sta_remove(uvif->vif_index, &peer_st_info);
 
-#ifdef UNIFORM_BW_SHARING
 	if (!result) {
 		rcu_assign_pointer(dev->peers[usta->index], NULL);
 		synchronize_rcu();
 
 		usta->index = -1;
 	}
-#endif
 
 	return result;
 }
@@ -2051,7 +2052,7 @@ static int add_chanctx(struct ieee80211_hw *hw,
 		return -1;
 	}
 
-	MULTI_CHAN_DEBUG("%s: %d MHz\n",
+	DEBUG_LOG("%s: %d MHz\n",
 			 __func__,
 			 conf->def.chan->center_freq);
 
@@ -2079,15 +2080,16 @@ static void remove_chanctx(struct ieee80211_hw *hw,
 	dev = hw->priv;
 	ctx = (struct umac_chanctx *)conf->drv_priv;
 
-	MULTI_CHAN_DEBUG("%s: %d MHz\n",
+	DEBUG_LOG("%s: %d MHz\n",
 			 __func__,
 			 conf->def.chan->center_freq);
 
 	mutex_lock(&dev->mutex);
 
-	/* unassign_vif_chanctx should have been called to free all the assigned
+	/* Unassign_vif_chanctx should have been called to free all the assigned
 	 * vifs before this call is called, hence we dont need to specifically
-	 * free the vifs here */
+	 * free the vifs here
+	 */
 	rcu_assign_pointer(dev->chanctx[ctx->index], NULL);
 	synchronize_rcu();
 
@@ -2109,13 +2111,13 @@ static void change_chanctx(struct ieee80211_hw *hw,
 	dev = hw->priv;
 	ctx = (struct umac_chanctx *)conf->drv_priv;
 
-	MULTI_CHAN_DEBUG("%s: %d MHz\n",
+	DEBUG_LOG("%s: %d MHz\n",
 			 __func__,
 			 conf->def.chan->center_freq);
 
 	/* SDK: See why this is needed */
 	if (dev->curr_chanctx_idx != ctx->index) {
-		MULTI_CHAN_DEBUG("Current ctx differs from the new ctx\n");
+		DEBUG_LOG("Current ctx differs from the new ctx\n");
 		return;
 	}
 
@@ -2140,7 +2142,7 @@ static int assign_vif_chanctx(struct ieee80211_hw *hw,
 	uvif = (struct umac_vif *)vif->drv_priv;
 	ctx = (struct umac_chanctx *)conf->drv_priv;
 
-	MULTI_CHAN_DEBUG("%s: addr: %pM, type: %d, p2p: %d chan: %d MHz\n",
+	DEBUG_LOG("%s: addr: %pM, type: %d, p2p: %d chan: %d MHz\n",
 			__func__,
 			vif->addr,
 			vif->type,
@@ -2156,7 +2158,8 @@ static int assign_vif_chanctx(struct ieee80211_hw *hw,
 	ctx->nvifs++;
 
 	/* If this is the first vif being assigned to the channel context then
-	 * increment our count of the active channel contexts */
+	 * increment our count of the active channel contexts
+	 */
 	if (prog_chanctx_time_info) {
 		if (!dev->num_active_chanctx)
 			dev->curr_chanctx_idx = ctx->index;
@@ -2185,7 +2188,7 @@ static void unassign_vif_chanctx(struct ieee80211_hw *hw,
 	uvif = (struct umac_vif *)vif->drv_priv;
 	ctx = (struct umac_chanctx *)conf->drv_priv;
 
-	MULTI_CHAN_DEBUG("%s: addr: %pM, type: %d, p2p: %d chan: %d MHz\n",
+	DEBUG_LOG("%s: addr: %pM, type: %d, p2p: %d chan: %d MHz\n",
 			 __func__,
 			 vif->addr,
 			 vif->type,
@@ -3758,14 +3761,15 @@ static ssize_t proc_write_config(struct file *file,
 			struct mac80211_dev *dev = wifi->hw->priv;
 
 			tasklet_kill(&dev->proc_tx_tasklet);
-			#if 0
+#if 0
 			/* Todo: Enabling this causes RPU Lockup,
-			 * need to debug */
+			 * need to debug
+			 */
 			uccp420wlan_prog_vif_ctrl(0,
 						  dev->if_mac_addresses[0].addr,
 						  IF_MODE_STA_IBSS,
 						  IF_REM);
-			#endif
+#endif
 			uccp420wlan_core_deinit(dev, 0);
 			wifi->params.start_prod_mode = 0;
 			wifi->params.pkt_gen_val = 1;
@@ -3786,7 +3790,7 @@ static ssize_t proc_write_config(struct file *file,
 			wifi->params.pkt_gen_val = 1;
 			tasklet_kill(&dev->proc_tx_tasklet);
 	} else if ((wifi->params.production_test) &&
-		    param_get_sval(buf, "payload_length=", &sval)) {
+		    param_get_val(buf, "payload_length=", &val)) {
 			wifi->params.payload_length = val;
 	} else if ((ftm || wifi->params.production_test) &&
 		    param_get_sval(buf, "set_tx_power=", &sval)) {

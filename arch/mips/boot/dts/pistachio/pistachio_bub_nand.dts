@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Imagination Technologies Ltd.
+ * Copyright (C) 2015 Google, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -8,11 +9,11 @@
 
 /dts-v1/;
 
-#include "pistachio_ci40_audio.dtsi"
+#include "pistachio.dtsi"
 
 / {
-	model = "IMG Ci40";
-	compatible = "img,pistachio-ci40", "img,pistachio";
+	model = "IMG Pistachio BuB";
+	compatible = "img,pistachio-bub", "img,pistachio";
 
 	aliases {
 		serial0 = &uart0;
@@ -20,7 +21,7 @@
 	};
 
 	chosen {
-		bootargs = "console=ttyS1,115200n8 earlycon=uart8250,mmio32,0x18101500,115200 root=/dev/sda1 rootwait ro";
+		bootargs = "console=ttyS1,115200n8 earlycon=uart8250,mmio32,0x18101500,115200 ubi.mtd=1 root=ubi0:rootfs rootfstype=ubifs ro";
 	};
 
 	memory {
@@ -35,46 +36,6 @@
 		regulator-max-microvolt = <1800000>;
 		regulator-boot-on;
 	};
-
-	/* EXT clock from cc2520 is fed to sc16is752 */
-	cc2520_ext_clk: cc2520-ext-clk {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <16000000>;
-		clock-output-names = "cc2520_ext_clock";
-        };
-};
-
-&spfi0 {
-	status = "okay";
-	pinctrl-0 = <&spim0_pins>;
-	pinctrl-names = "default";
-
-	cs-gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>, <&gpio0 2 GPIO_ACTIVE_HIGH>;
-
-	cc2520@0 {
-		compatible = "ti,cc2520";
-		reg = <0>;
-		spi-max-frequency = <8000000>;
-		fifo-gpio = <&gpio3 4 GPIO_ACTIVE_HIGH>;
-		fifop-gpio = <&gpio3 5 GPIO_ACTIVE_HIGH>;
-		sfd-gpio = <&gpio4 15 GPIO_ACTIVE_HIGH>;
-		cca-gpio = <&gpio3 6 GPIO_ACTIVE_HIGH>;
-		vreg-gpio = <&gpio2 12 GPIO_ACTIVE_HIGH>;
-		reset-gpio = <&gpio0 12 GPIO_ACTIVE_HIGH>;
-		extclock-freq = <16000000>;
-	};
-
-	sc16is752@1 {
-		compatible = "nxp,sc16is752";
-		reg = <1>;
-		clocks = <&cc2520_ext_clk>;
-		spi-max-frequency = <15000000>;
-		interrupt-parent = <&gpio0>;
-		interrupts = <11 IRQ_TYPE_EDGE_FALLING>;
-		gpio-controller;
-		#gpio-cells = <2>;
-	};
 };
 
 &spfi1 {
@@ -82,7 +43,7 @@
 
 	pinctrl-0 = <&spim1_pins>, <&spim1_quad_pins>;
 	pinctrl-names = "default";
-	cs-gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>, <&gpio0 1 GPIO_ACTIVE_HIGH>;
+	cs-gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>, <&gpio3 10 GPIO_ACTIVE_HIGH>;
 
 	flash@0 {
 		compatible = "jedec,spi-nor";
@@ -100,7 +61,15 @@
 	};
 };
 
+&uccpsystem {
+	status = "okay";
+};
+
 &uccphostport {
+	status = "okay";
+};
+
+&uccpbthp {
 	status = "okay";
 };
 
@@ -130,7 +99,6 @@
 	status = "okay";
 
 	bus-width = <4>;
-	disable-wp;
 };
 
 &ir {
@@ -151,6 +119,11 @@
 };
 
 &i2c0 {
+	status = "okay";
+	clock-frequency = <400000>;
+};
+
+&i2c1 {
 	status = "okay";
 	clock-frequency = <400000>;
 };
