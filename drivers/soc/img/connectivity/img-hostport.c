@@ -76,11 +76,59 @@ DEFINE_SPINLOCK(host_to_uccp_core_lock);
 /*
  * Forward declarations
  */
-static void notify_common(u16 user_data, int user_id);
+static void notify_common(u16 user_data, int user_id, void (*poke_ready)(void));
 
 /*
  * Public interface procs
  */
+
+void img_transport_notify(u16 user_data, int user_id)
+{
+	img_transport_notify_callback(user_data, user_id, NULL);
+}
+EXPORT_SYMBOL(img_transport_notify);
+
+int __must_check img_transport_notify_timeout(u16 user_data,
+					int user_id,
+					long jiffies_timeout)
+{
+	return img_transport_notify_callback_timeout(user_data, user_id,
+						jiffies_timeout, NULL);
+}
+EXPORT_SYMBOL(img_transport_notify_timeout);
+
+void img_transport_notify_callback(u16 user_data,
+					int user_id,
+					void (*poke_ready)(void))
+{
+	unsigned long flags;
+	spin_lock_irqsave(&host_to_uccp_core_lock, flags);
+	while(IS_BUSY(H2C_CMD_ADDR(module->vbase)))
+		continue;
+	notify_common(user_data, user_id, poke_ready);
+	spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
+}
+EXPORT_SYMBOL(img_transport_notify_callback);
+
+int __must_check img_transport_notify_callback_timeout(u16 user_data,
+					int user_id,
+					long jiffies_timeout,
+					void (*poke_ready)(void))
+{
+	unsigned long start_time = jiffies, flags;
+	spin_lock_irqsave(&host_to_uccp_core_lock, flags);
+	while(IS_BUSY(H2C_CMD_ADDR(module->vbase))) {
+		if (time_after_eq(start_time + jiffies_timeout, jiffies)) {
+			spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
+			return -ETIME;
+		}
+	}
+
+	notify_common(user_data, user_id, poke_ready);
+	spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
+	return 0;
+}
+EXPORT_SYMBOL(img_transport_notify_callback_timeout);
 
 int img_transport_register_callback(
 		img_transport_handler poke,
@@ -99,36 +147,6 @@ int img_transport_register_callback(
 	return 0;
 }
 EXPORT_SYMBOL(img_transport_register_callback);
-
-void img_transport_notify(u16 user_data, int user_id)
-{
-	unsigned long flags;
-	spin_lock_irqsave(&host_to_uccp_core_lock, flags);
-	while(IS_BUSY(H2C_CMD_ADDR(module->vbase)))
-		continue;
-	notify_common(user_data, user_id);
-	spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
-}
-EXPORT_SYMBOL(img_transport_notify);
-
-int __must_check img_transport_notify_timeout(u16 user_data,
-					int user_id,
-					long jiffies_timeout)
-{
-	unsigned long start_time = jiffies, flags;
-	spin_lock_irqsave(&host_to_uccp_core_lock, flags);
-	while(IS_BUSY(H2C_CMD_ADDR(module->vbase))) {
-		if (time_after_eq(start_time + jiffies_timeout, jiffies)) {
-			spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
-			return -ETIME;
-		}
-	}
-
-	notify_common(user_data, user_id);
-	spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
-	return 0;
-}
-EXPORT_SYMBOL(img_transport_notify_timeout);
 
 int img_transport_remove_callback(unsigned int client_id)
 {
@@ -153,9 +171,11 @@ static u8 id_to_field(int id)
 	return (id << 4) | id;
 }
 
-static void notify_common(u16 user_data, int user_id)
+static void notify_common(u16 user_data, int user_id, void (*poke_ready)(void))
 {
 	dbgn("snd -- %d:%d:%02X", user_id, user_id, user_data);
+	if (poke_ready)
+		poke_ready();
 	iowrite32(0x87 << 24 | user_data << 8 | id_to_field(user_id),
 			(void __iomem *)H2C_CMD_ADDR(module->vbase));
 }
