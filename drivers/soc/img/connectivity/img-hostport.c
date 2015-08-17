@@ -48,6 +48,8 @@
 
 #include "img-hostport.h"
 
+typedef void (*gen_handler)(void *);
+
 static struct img_hostport *module;
 static const char *hal_name = "img-hostport";
 #define dbg(format, ...) pr_debug("%s: " format, hal_name, ## __VA_ARGS__)
@@ -76,7 +78,8 @@ DEFINE_SPINLOCK(host_to_uccp_core_lock);
 /*
  * Forward declarations
  */
-static void notify_common(u16 user_data, int user_id, void (*poke_ready)(void));
+static void notify_common(u16 user_data, int user_id, gen_handler poke_ready,
+							void *poke_ready_arg);
 
 /*
  * Public interface procs
@@ -84,7 +87,7 @@ static void notify_common(u16 user_data, int user_id, void (*poke_ready)(void));
 
 void img_transport_notify(u16 user_data, int user_id)
 {
-	img_transport_notify_callback(user_data, user_id, NULL);
+	img_transport_notify_callback(user_data, user_id, NULL, NULL);
 }
 EXPORT_SYMBOL(img_transport_notify);
 
@@ -93,19 +96,20 @@ int __must_check img_transport_notify_timeout(u16 user_data,
 					long jiffies_timeout)
 {
 	return img_transport_notify_callback_timeout(user_data, user_id,
-						jiffies_timeout, NULL);
+						jiffies_timeout, NULL, NULL);
 }
 EXPORT_SYMBOL(img_transport_notify_timeout);
 
 void img_transport_notify_callback(u16 user_data,
 					int user_id,
-					void (*poke_ready)(void))
+					gen_handler poke_ready,
+					void *poke_ready_arg)
 {
 	unsigned long flags;
 	spin_lock_irqsave(&host_to_uccp_core_lock, flags);
 	while(IS_BUSY(H2C_CMD_ADDR(module->vbase)))
 		continue;
-	notify_common(user_data, user_id, poke_ready);
+	notify_common(user_data, user_id, poke_ready, poke_ready_arg);
 	spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
 }
 EXPORT_SYMBOL(img_transport_notify_callback);
@@ -113,7 +117,8 @@ EXPORT_SYMBOL(img_transport_notify_callback);
 int __must_check img_transport_notify_callback_timeout(u16 user_data,
 					int user_id,
 					long jiffies_timeout,
-					void (*poke_ready)(void))
+					gen_handler poke_ready,
+					void *poke_ready_arg)
 {
 	unsigned long start_time = jiffies, flags;
 	spin_lock_irqsave(&host_to_uccp_core_lock, flags);
@@ -124,7 +129,7 @@ int __must_check img_transport_notify_callback_timeout(u16 user_data,
 		}
 	}
 
-	notify_common(user_data, user_id, poke_ready);
+	notify_common(user_data, user_id, poke_ready, poke_ready_arg);
 	spin_unlock_irqrestore(&host_to_uccp_core_lock, flags);
 	return 0;
 }
@@ -171,11 +176,12 @@ static u8 id_to_field(int id)
 	return (id << 4) | id;
 }
 
-static void notify_common(u16 user_data, int user_id, void (*poke_ready)(void))
+static void notify_common(u16 user_data, int user_id, gen_handler poke_ready,
+							void *poke_ready_arg)
 {
 	dbgn("snd -- %d:%d:%02X", user_id, user_id, user_data);
 	if (poke_ready)
-		poke_ready();
+		poke_ready(poke_ready_arg);
 	iowrite32(0x87 << 24 | user_data << 8 | id_to_field(user_id),
 			(void __iomem *)H2C_CMD_ADDR(module->vbase));
 }

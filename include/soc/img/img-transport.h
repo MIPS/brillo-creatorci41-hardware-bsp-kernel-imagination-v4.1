@@ -70,7 +70,8 @@ int __must_check img_transport_notify_timeout(u16 user_data,
  */
 void img_transport_notify_callback(u16 user_data,
 					int user_id,
-					void (*poke_ready)(void));
+					void (*poke_ready)(void *),
+					void *poke_ready_arg);
 
 /*
  * Times out after jiffies_timeout kernel ticks have passed. 'poke_ready' called
@@ -83,7 +84,8 @@ void img_transport_notify_callback(u16 user_data,
 int __must_check img_transport_notify_callback_timeout(u16 user_data,
 					int user_id,
 					long jiffies_timeout,
-					void (*poke_ready)(void));
+					void (*poke_ready)(void *),
+					void *poke_ready_arg);
 
 /*
  * Register a routine which will be invoked whenever a message for client_id
