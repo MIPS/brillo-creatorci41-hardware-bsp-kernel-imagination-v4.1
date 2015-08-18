@@ -907,6 +907,8 @@
 		fifo-depth = <0x20>;
 		num-slots = <1>;
 		clock-frequency = <200000000>;
+		cap-mmc-highspeed;
+		cap-sd-highspeed;
 		status = "disabled";
 	};
 
