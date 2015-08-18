@@ -217,11 +217,8 @@ static irqreturn_t hal_irq_handler(int    irq, void  *p)
 
 	/*
 	 * Send ACK to the RPU
-	 *
-	 * ACKs have to be sent to ID = 1 (RPU Bluetooth) for now. That will
-	 * change to COMMON_HOST_ID.
 	 */
-	img_transport_notify(0, 1);
+	img_transport_notify(0, COMMON_HOST_ID);
 
 	/*
 	 * callee_id is tainted, therefore must be checked.
@@ -415,12 +412,7 @@ static int img_hostport_pltfr_probe(struct platform_device *pdev)
 	img_hostport_irq_on();
 
 	dbg("releasing C2H register");
-	/*
-	 * We send this to ID = 1 (RPU Bluetooth) to be compatible with the
-	 * other side. This should be changed to COMMON_HOST_ID sometime in the
-	 * future.
-	 */
-	img_transport_notify(0, 1);
+	img_transport_notify(0, COMMON_HOST_ID);
 
 	dbg("hostport driver registration completed");
 	return result;
