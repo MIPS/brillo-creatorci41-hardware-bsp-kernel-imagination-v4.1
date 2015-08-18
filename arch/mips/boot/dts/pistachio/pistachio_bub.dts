@@ -97,8 +97,6 @@
 
 &sdhost {
 	status = "okay";
-
-	bus-width = <4>;
 };
 
 &ir {
