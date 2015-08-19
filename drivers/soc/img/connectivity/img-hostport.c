@@ -249,6 +249,9 @@ static void img_hostport_irq_on(void)
 	 * receive inerrupts on the host
 	 */
 
+	iowrite32(0x80000000, H2C_ACK_ADDR(module->vbase));
+	iowrite32(0x80000000, C2H_ACK_ADDR(module->vbase));
+
 	value = readl(module->vmtx_irq_en);
 	value |= BIT(C_IRQ_EN_SHIFT);
 	writel(value, module->vmtx_irq_en);
