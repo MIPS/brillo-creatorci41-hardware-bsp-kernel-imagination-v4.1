@@ -205,11 +205,6 @@ static irqreturn_t hal_irq_handler(int    irq, void  *p)
 		return IRQ_HANDLED;
 	}
 
-	/* Clear the uccp interrupt */
-	value = 0;
-	value |= BIT(C_INT_CLR_SHIFT);
-	writel(value, (void __iomem *)(H2C_ACK_ADDR(module->vbase)));
-
 	callee_id = CALLEE(reg_value);
 	caller_id = CALLER(reg_value);
 	user_message = USERMSG(reg_value);
@@ -236,6 +231,11 @@ static irqreturn_t hal_irq_handler(int    irq, void  *p)
 		spin_unlock_irqrestore(handler_in_use, flags);
 	} else
 		errn("endpoint with id = %u not registered", callee_id);
+
+	/* Clear the uccp interrupt */
+	value = 0;
+	value |= BIT(C_INT_CLR_SHIFT);
+	writel(value, (void __iomem *)(H2C_ACK_ADDR(module->vbase)));
 
 	return IRQ_HANDLED;
 }
