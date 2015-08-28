@@ -41,6 +41,7 @@
 #include <soc/img/img-transport.h>
 
 #include "circ-buf-oneway.h"
+#include "etrace.h"
 #include "gateway.h"
 #include "payload.h"
 
@@ -182,6 +183,7 @@ static void do_tx_backlog(void)
 
 	if (length_sum > 0) {
 		img_transport_notify(RPU_REQ((u16)length_sum), BLUETOOTH_ID);
+		trace_hst_req_execd_catchup(BLUETOOTH_ID, length_sum);
 	}
 }
 
@@ -199,6 +201,8 @@ static void ack_from_controller(struct work_struct *tbd)
 	return_work(work);
 
 	do_tx_backlog();
+
+	trace_ctl_ack_execd(BLUETOOTH_ID, payload_length);
 }
 
 static void req_from_controller(struct work_struct *tbd)
@@ -228,6 +232,7 @@ static void req_from_controller(struct work_struct *tbd)
 
 exit:
 	return_work(work);
+	trace_ctl_req_execd(BLUETOOTH_ID, user_data_length);
 }
 
 static void req_to_controller(struct work_struct *tbd)
@@ -251,6 +256,7 @@ static void req_to_controller(struct work_struct *tbd)
 		payload_to_circ_buf_out(pld, &xmit_buffers.tx);
 		payload_delete(pld);
 		img_transport_notify(RPU_REQ(space_needed), BLUETOOTH_ID);
+		trace_hst_req_execd_sent(BLUETOOTH_ID, space_needed);
 	} else {
 		/*
 		 * Save for backlog processing, which should be fired on every
@@ -260,6 +266,7 @@ static void req_to_controller(struct work_struct *tbd)
 			diagerrn("no space in backlog, dropping payload");
 			payload_delete(pld);
 		}
+		trace_hst_req_execd_delayed(BLUETOOTH_ID, space_needed);
 	}
 
 exit:
@@ -279,6 +286,7 @@ static void handle_gateway_message(struct payload *pld)
 		payload_delete(pld);
 		return;
 	}
+	trace_hst_req_sched(BLUETOOTH_ID, payload_length(pld));
 	work->pld = pld;
 	if (!queue_work(img_bt_workqueue, &work->tbd)) {
 		diagerrn("bug : work already scheduled");
@@ -298,12 +306,14 @@ static void handle_controller_message(u16 user_data)
 		/* Process whatever may be pending in the TX backlog */
 		if (NULL == work)
 			diagerrn("no more free work structures");
+		trace_ctl_ack_sched(BLUETOOTH_ID, work->req_length);
 		queue_work(img_bt_workqueue, &work->tbd);
 		break;
 	case REQUEST:
 		/* A data request has arrived */
 		work = prepare_work(req_from_controller, content);
 		work->req_length = content;
+		trace_ctl_req_sched(BLUETOOTH_ID, work->req_length);
 		queue_work(img_bt_workqueue, &work->tbd);
 		break;
 	default:
