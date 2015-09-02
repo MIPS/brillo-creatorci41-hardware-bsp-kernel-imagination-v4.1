@@ -121,7 +121,7 @@
 		compatible = "nxp,sc16is752";
 		reg = <1>;
 		clocks = <&cc2520_ext_clk>;
-		spi-max-frequency = <15000000>;
+		spi-max-frequency = <4000000>;
 		interrupt-parent = <&gpio0>;
 		interrupts = <11 IRQ_TYPE_EDGE_FALLING>;
 		gpio-controller;
