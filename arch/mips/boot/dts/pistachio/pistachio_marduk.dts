@@ -107,7 +107,7 @@
 	cc2520@0 {
 		compatible = "ti,cc2520";
 		reg = <0>;
-		spi-max-frequency = <8000000>;
+		spi-max-frequency = <4000000>;
 		fifo-gpio = <&gpio3 4 GPIO_ACTIVE_HIGH>;
 		fifop-gpio = <&gpio3 5 GPIO_ACTIVE_HIGH>;
 		sfd-gpio = <&gpio4 15 GPIO_ACTIVE_HIGH>;
