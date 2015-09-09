@@ -335,7 +335,6 @@ static int img_bt_pltfr_memsetup(void)
 
 static void img_bt_pltfr_memsetup_rollback(void)
 {
-	destroy_workqueue(img_bt_workqueue);
 	memset(&xmit_buffers, 0 , sizeof(xmit_buffers));
 	return;
 }
@@ -484,6 +483,7 @@ memsetup_failed:
 static int img_bt_pltfr_remove(struct platform_device *pdev)
 {
 	gateway_exit();
+	destroy_workqueue(img_bt_workqueue);
 	img_bt_pltfr_reg_handler_rollback(0);
 	img_bt_pltfr_bufsetup_rollback();
 	img_bt_pltfr_dtsetup_rollback();
