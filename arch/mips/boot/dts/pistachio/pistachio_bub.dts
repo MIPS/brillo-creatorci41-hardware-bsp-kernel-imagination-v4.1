@@ -18,6 +18,7 @@
 	aliases {
 		serial0 = &uart0;
 		serial1 = &uart1;
+		ethernet0 = &enet;
 	};
 
 	chosen {
@@ -97,8 +98,6 @@
 
 &sdhost {
 	status = "okay";
-
-	bus-width = <4>;
 };
 
 &ir {

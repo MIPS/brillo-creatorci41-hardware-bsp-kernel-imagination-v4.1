@@ -32,6 +32,7 @@
 			reusable;
 			size = <0x400000>;
 			alignment = <0x1000>;
+			alloc-ranges = <0x00000000 0x4000000>;
 			linux,cma-default;
 		};
 	};
@@ -55,6 +56,14 @@
 				468000 950000
 				442000 900000
 				416000 800000
+				390000 780000
+				364000 760000
+				338000 740000
+				312000 700000
+				286000 680000
+				260000 660000
+				234000 640000
+				208000 620000
 			>;
 		};
 	};
@@ -915,6 +924,9 @@
 		fifo-depth = <0x20>;
 		num-slots = <1>;
 		clock-frequency = <200000000>;
+		bus-width = <8>;
+		cap-mmc-highspeed;
+		cap-sd-highspeed;
 		status = "disabled";
 	};
 
@@ -1080,6 +1092,6 @@
                          <52000>,
                          <320000000>,
                          <320000000>;
-                io-channels = <&adc 4>, <&adc 5>;
+                io-channels = <&adc 4>;
        };
 };
