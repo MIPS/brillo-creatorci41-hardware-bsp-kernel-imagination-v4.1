@@ -160,11 +160,6 @@
 	pinctrl-names = "default";
 };
 
-&adc {
-	status = "okay";
-	vref-supply = <&reg_1v8>;
-};
-
 &i2c0 {
 	status = "okay";
 	clock-frequency = <400000>;
