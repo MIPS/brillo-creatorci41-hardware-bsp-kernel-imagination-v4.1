@@ -65,6 +65,11 @@
 &i2c3 {
 	status = "okay";
 	clock-frequency = <400000>;
+
+	tpm@20 {
+		compatible = "infineon,slb9645tt";
+		reg = <0x20>;
+	};
 };
 
 &adc {
