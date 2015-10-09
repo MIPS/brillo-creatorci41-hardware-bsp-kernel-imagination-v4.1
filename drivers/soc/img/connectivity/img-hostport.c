@@ -211,11 +211,6 @@ static irqreturn_t hal_irq_handler(int    irq, void  *p)
 	dbgn("rcv -- %d:%d:%02X", callee_id, caller_id, user_message);
 
 	/*
-	 * Send ACK to the RPU
-	 */
-	img_transport_notify(0, COMMON_HOST_ID);
-
-	/*
 	 * callee_id is tainted, therefore must be checked.
 	 */
 	if (callee_id > MAX_ENDPOINT_ID) {
@@ -239,6 +234,10 @@ deassert:
 	value |= BIT(C_INT_CLR_SHIFT);
 	writel(value, (void __iomem *)(H2C_ACK_ADDR(module->vbase)));
 
+	/*
+	 * Send ACK to the RPU
+	 */
+	img_transport_notify(0, COMMON_HOST_ID);
 exit:
 	return IRQ_HANDLED;
 }
