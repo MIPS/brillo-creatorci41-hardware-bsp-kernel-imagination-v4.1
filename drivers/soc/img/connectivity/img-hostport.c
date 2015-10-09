@@ -202,7 +202,7 @@ static irqreturn_t hal_irq_handler(int    irq, void  *p)
 	first_bit = (reg_value & (1 << 31)) >> 31;
 	if (0 == first_bit) {
 		err("unexpected spurious interrupt detected!\n");
-		return IRQ_HANDLED;
+		goto exit;
 	}
 
 	callee_id = CALLEE(reg_value);
@@ -220,23 +220,26 @@ static irqreturn_t hal_irq_handler(int    irq, void  *p)
 	 */
 	if (callee_id > MAX_ENDPOINT_ID) {
 		errn("endpoint with id = %u doesn't exist", callee_id);
-		return IRQ_HANDLED;
+		goto deassert;
 	}
 
 	handler = module->endpoints.f[callee_id];
 	handler_in_use = module->endpoints.in_use + callee_id;
-	if (NULL != handler) {
-		spin_lock_irqsave(handler_in_use, flags);
-		handler((u16)user_message);
-		spin_unlock_irqrestore(handler_in_use, flags);
-	} else
+	if (NULL == handler) {
 		errn("endpoint with id = %u not registered", callee_id);
+		goto deassert;
+	}
+	spin_lock_irqsave(handler_in_use, flags);
+	handler((u16)user_message);
+	spin_unlock_irqrestore(handler_in_use, flags);
 
+deassert:
 	/* Clear the uccp interrupt */
 	value = 0;
 	value |= BIT(C_INT_CLR_SHIFT);
 	writel(value, (void __iomem *)(H2C_ACK_ADDR(module->vbase)));
 
+exit:
 	return IRQ_HANDLED;
 }
 
