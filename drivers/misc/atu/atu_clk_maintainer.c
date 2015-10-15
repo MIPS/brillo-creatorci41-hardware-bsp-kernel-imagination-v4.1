@@ -27,8 +27,9 @@
 #include "atu_clk_maintainer.h"
 #include "atu_clk_ntp.h"
 
-
+static int atu_rate_changed;
 #define ATU_UPDATE_TIMER_INTRVL     1
+#define ATU_MODE_ON_THE_FLY	0x80000000
 
 /* Structure holding internal clk managing values. */
 struct atu_clk_maintainer {
@@ -58,6 +59,7 @@ struct atu_clk_maintainer {
 	struct clk *clk_atu;
 	spinlock_t atu_clk_lock;
 	int event_timer_rate;
+	struct notifier_block atu_clk_notifier;
 };
 
 static void atu_time_update(void);
@@ -358,7 +360,7 @@ int atu_settimeofday(const struct timespec *ts)
 		return -EINVAL;
 
 	spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
-	if (!patu_clk_mtner->atu_timecntr.cc) {
+	if (!patu_clk_mtner->atu_timecntr.cc || atu_rate_changed) {
 		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 		return -EFAULT;
 	}
@@ -552,21 +554,86 @@ atu_clocks_calc_mult_shift(u32 *mult, u32 *shift, u32 from, u32 to, u32 maxsec)
 	*shift = sft;
 }
 
+static void atu_clk_rate_change_on_the_fly(unsigned long int rate)
+{
+	unsigned long flags;
+	u32 mult, shift, mask;
+	cycle_t clk_cycle;
+	u64 ntp_ns_per_cycle, ntp_ns_per_cycle_div;
+
+	mask = patu_clk_mtner->atu_timecntr.cc->mask;
+
+	clocks_calc_mult_shift(&mult, &shift, rate,
+			       NSEC_PER_SEC, DIV_ROUND_UP(mask, rate));
+
+	ntp_ns_per_cycle = (u64)NTP_INTERVAL_LENGTH << shift;
+	ntp_ns_per_cycle_div = do_div_round_closest(ntp_ns_per_cycle, mult);
+
+	clk_cycle = ntp_ns_per_cycle_div ? (cycle_t)ntp_ns_per_cycle_div :
+					  (cycle_t)1;
+
+	spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
+
+	patu_clk_mtner->shift = shift;
+	patu_clk_mtner->mult = mult;
+	patu_clk_mtner->event_timer_rate = rate;
+
+	atu_rate_changed = 1;
+
+	/* Clear the error */
+	patu_clk_mtner->tm_error = 0;
+	patu_clk_mtner->tm_error_shift = NTP_SCALE_SHIFT - shift;
+
+	patu_clk_mtner->clk_cycles_per_ntp_cycle = clk_cycle;
+
+	patu_clk_mtner->shifted_ns_per_ntp_cycle =
+		(u64)clk_cycle * mult;
+	patu_clk_mtner->shifted_remain_ns_per_ntp_cycle =
+		ntp_ns_per_cycle - patu_clk_mtner->shifted_ns_per_ntp_cycle;
+
+	/* Update cycle_last with current read value */
+	patu_clk_mtner->atu_timecntr.cycle_last = patu_clk_mtner->
+			atu_timecntr.cc->read(patu_clk_mtner->atu_timecntr.cc);
+
+	spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
+}
+
 static int atu_adjtimex(struct timex *txc)
 {
-	int ret=0;
+	int ret = 0;
 	unsigned long flags;
 
+	/* Fractional PLL */
 	if (patu_clk_mtner->clk_atu) {
+		/* Mode to check the rate change on the fly */
+		if (txc->modes == ATU_MODE_ON_THE_FLY) {
+			spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
+			if (atu_rate_changed) {
+				atu_rate_changed = 0;
+				ret = 1;
+			}
+			spin_unlock_irqrestore(
+				&patu_clk_mtner->atu_clk_lock, flags);
+			return ret;
+		}
+		spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
+		if (atu_rate_changed) {
+			spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock,
+					       flags);
+			return 0;
+		}
+		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 
+		/* Time error correction - ADJ_SETOFFSET */
 		if (txc->modes & ADJ_SETOFFSET) {
 			spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
 			ret = atu_set_time_offset(txc);
 			spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock,
-									flags);
+					       flags);
 			return ret;
 		}
 
+		/* Rate error correction - ADJ_FREQUENCY */
 		if (txc->modes & ADJ_FREQUENCY) {
 			unsigned long int rate;
 			long int freq;
@@ -587,12 +654,12 @@ static int atu_adjtimex(struct timex *txc)
 					patu_clk_mtner->event_timer_rate,
 					NSEC_PER_SEC) * dir;
 
-			/* Current Range of adjustable PLL is 147MHz - 149MHz */
+			/* Setting new rate */
 			clk_set_rate(patu_clk_mtner->clk_atu, rate);
 			txc->freq = rate;
 		}
 
-	} else {
+	} else { /* Fixed PLL */
 		spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
 		if (patu_clk_mtner->atu_timecntr.cc)
 			ret = __atu_adjtimex(txc, &patu_clk_mtner->atu_ntp);
@@ -773,6 +840,34 @@ static void atu_time_update()
 	spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 }
 
+static int atu_clk_notifier_cb(struct notifier_block *nb,
+			       unsigned long event, void *data)
+{
+	struct clk_notifier_data *ndata = data;
+	long int diff;
+
+	switch (event) {
+	case PRE_RATE_CHANGE:
+		diff = abs((int)patu_clk_mtner->event_timer_rate
+				 - (int)ndata->new_rate);
+
+		/*
+		 *  Assumption is that card driver rate change
+		 *  will be more than 100,000 Hz
+		 */
+		if (diff > 100000) {
+			atu_clk_rate_change_on_the_fly(ndata->new_rate);
+			pr_debug("ATU rate change %lu\n", ndata->new_rate);
+		}
+		return NOTIFY_OK;
+	case POST_RATE_CHANGE:
+	case ABORT_RATE_CHANGE:
+		return NOTIFY_OK;
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
 int atu_cyclecounter_register(struct cyclecounter *pcc, struct clk *clk_atu)
 {
 	unsigned long flags;
@@ -787,8 +882,14 @@ int atu_cyclecounter_register(struct cyclecounter *pcc, struct clk *clk_atu)
 	else
 		pr_info("Register Fixed PLL to ATU Clock\n");
 
-	if(clk_atu)
+	if (clk_atu) {
 		patu_clk_mtner->event_timer_rate = clk_get_rate(clk_atu);;
+		patu_clk_mtner->atu_clk_notifier.notifier_call =
+				atu_clk_notifier_cb;
+		clk_notifier_register(clk_atu,
+				      &patu_clk_mtner->atu_clk_notifier);
+	}
+
 	atu_chardev_init();
 	atu_ntp_init(&patu_clk_mtner->atu_ntp);
 
@@ -815,6 +916,9 @@ int atu_cyclecounter_unregister(struct cyclecounter *pcc)
 		pr_err("Invalid input data to %s\n", __func__);
 		return -EINVAL;
 	}
+	if (patu_clk_mtner->clk_atu)
+		clk_notifier_unregister(patu_clk_mtner->clk_atu,
+			&patu_clk_mtner->atu_clk_notifier);
 
 	atu_timer_exit();
 	atu_chardev_remove();
