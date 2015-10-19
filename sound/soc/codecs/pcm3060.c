@@ -1,7 +1,7 @@
 /*
  * PCM3060 codec driver
  *
- * Copyright (C) 2014 Imagination Technologies Ltd.
+ * Copyright (C) 2015 Imagination Technologies Ltd.
  *
  * Author: Damien Horsley <Damien.Horsley@imgtec.com>
  *
@@ -22,7 +22,6 @@
 
 #include "pcm3060.h"
 
-/* For 64-bit frames, the 8 lsbs are ignored by the codec */
 #define PCM3060_FORMATS (SNDRV_PCM_FMTBIT_S24_3LE | \
 			 SNDRV_PCM_FMTBIT_S24_LE |  \
 			 SNDRV_PCM_FMTBIT_S32_LE)
@@ -37,7 +36,6 @@ static const char *const pcm3060_supply_names[PCM3060_NUM_SUPPLIES] = {
 	"VDD"
 };
 
-/* codec private data */
 struct pcm3060_priv {
 	struct regulator_bulk_data supplies[PCM3060_NUM_SUPPLIES];
 	struct regmap *regmap;
@@ -88,58 +86,58 @@ static const DECLARE_TLV_DB_SCALE(pcm3060_dac_tlv, -10050, 50, 1);
 static const DECLARE_TLV_DB_SCALE(pcm3060_adc_tlv, -10050, 50, 1);
 
 static const struct snd_kcontrol_new pcm3060_snd_controls[] = {
-	SOC_ENUM("DAC1 Connection Type", pcm3060_dac_con),
-	SOC_DOUBLE_R_RANGE_TLV("DAC1 Playback Volume",
+	SOC_ENUM("DAC Connection Type", pcm3060_dac_con),
+	SOC_DOUBLE_R_RANGE_TLV("DAC Playback Volume",
 			PCM3060_DAC_VOL_L, PCM3060_DAC_VOL_R,
 			0, 54, 255, 0, pcm3060_dac_tlv),
-	SOC_ENUM("DAC1 Oversampling Rate Multiplier", pcm3060_dac_over_mult),
-	SOC_SINGLE("DAC1 Invert Switch", PCM3060_DAC_OV_PH_MUTE,
+	SOC_ENUM("DAC Oversampling Rate Multiplier", pcm3060_dac_over_mult),
+	SOC_SINGLE("DAC Invert Switch", PCM3060_DAC_OV_PH_MUTE,
 			PCM3060_DAC_DREV_SHIFT, 1, 0),
-	SOC_ENUM("DAC1 Digital Filter roll-off", pcm3060_dac_roll_off),
-	SOC_SINGLE("DAC1 De-Emphasis Switch", PCM3060_DAC_FLT_DEMP_Z,
+	SOC_ENUM("DAC Digital Filter roll-off", pcm3060_dac_roll_off),
+	SOC_SINGLE("DAC De-Emphasis Switch", PCM3060_DAC_FLT_DEMP_Z,
 			PCM3060_DAC_DMC_SHIFT, 1, 0),
-	SOC_ENUM("DAC1 De-Emphasis Type", pcm3060_dac_demp),
-	SOC_ENUM("DAC1 Zero Flag Polarity", pcm3060_dac_zf_pol),
-	SOC_ENUM("DAC1 Zero Flag Function", pcm3060_dac_zf_func),
-	SOC_DOUBLE_R_RANGE_TLV("ADC1 Capture Volume",
+	SOC_ENUM("DAC De-Emphasis Type", pcm3060_dac_demp),
+	SOC_ENUM("DAC Zero Flag Polarity", pcm3060_dac_zf_pol),
+	SOC_ENUM("DAC Zero Flag Function", pcm3060_dac_zf_func),
+	SOC_DOUBLE_R_RANGE_TLV("ADC Capture Volume",
 			PCM3060_ADC_VOL_L, PCM3060_ADC_VOL_R,
 			0, 14, 255, 0, pcm3060_adc_tlv),
-	SOC_SINGLE("ADC1 Zero-Cross Detection Switch", PCM3060_ADC_OPT,
+	SOC_SINGLE("ADC Zero-Cross Detection Switch", PCM3060_ADC_OPT,
 			PCM3060_ADC_ZCDD_SHIFT, 1, 1),
-	SOC_SINGLE("ADC1 High-Pass Filter Switch", PCM3060_ADC_OPT,
+	SOC_SINGLE("ADC High-Pass Filter Switch", PCM3060_ADC_OPT,
 			PCM3060_ADC_BYP_SHIFT, 1, 1),
-	SOC_SINGLE("ADC1 Invert Switch", PCM3060_ADC_OPT,
+	SOC_SINGLE("ADC Invert Switch", PCM3060_ADC_OPT,
 			PCM3060_ADC_DREV_SHIFT, 1, 0),
-	SOC_DOUBLE("ADC1 Mute Switch", PCM3060_ADC_OPT,
+	SOC_DOUBLE("ADC Mute Switch", PCM3060_ADC_OPT,
 			PCM3060_ADC_MUTE_L_SHIFT, PCM3060_ADC_MUTE_R_SHIFT,
 			1, 0),
 };
 
 static const struct snd_soc_dapm_widget pcm3060_dapm_widgets[] = {
-	SND_SOC_DAPM_DAC("DAC1", "Playback", PCM3060_RST_PWR_SE,
+	SND_SOC_DAPM_DAC("DAC", "Playback", PCM3060_RST_PWR_SE,
 			PCM3060_DAPSV_SHIFT, 1),
 
-	SND_SOC_DAPM_OUTPUT("AOUTL1"),
-	SND_SOC_DAPM_OUTPUT("AOUTR1"),
+	SND_SOC_DAPM_OUTPUT("AOUTL"),
+	SND_SOC_DAPM_OUTPUT("AOUTR"),
 
-	SND_SOC_DAPM_ADC("ADC1", "Capture", PCM3060_RST_PWR_SE,
+	SND_SOC_DAPM_ADC("ADC", "Capture", PCM3060_RST_PWR_SE,
 			PCM3060_ADPSV_SHIFT, 1),
 
-	SND_SOC_DAPM_INPUT("AINL1"),
-	SND_SOC_DAPM_INPUT("AINR1"),
+	SND_SOC_DAPM_INPUT("AINL"),
+	SND_SOC_DAPM_INPUT("AINR"),
 };
 
 static const struct snd_soc_dapm_route pcm3060_dapm_routes[] = {
 	/* Playback */
-	{ "AOUTL1", NULL, "DAC1" },
-	{ "AOUTR1", NULL, "DAC1" },
+	{ "AOUTL", NULL, "DAC" },
+	{ "AOUTR", NULL, "DAC" },
 
 	/* Capture */
-	{ "ADC1", NULL, "AINL1" },
-	{ "ADC1", NULL, "AINR1" },
+	{ "ADC", NULL, "AINL" },
+	{ "ADC", NULL, "AINR" },
 };
 
-unsigned int pcm3060_scki_ratios[] = {
+static unsigned int pcm3060_scki_ratios[] = {
 	768,
 	512,
 	384,
@@ -155,7 +153,7 @@ unsigned int pcm3060_scki_ratios[] = {
 
 static int pcm3060_reset(struct pcm3060_priv *pcm3060)
 {
-	int ret = 0;
+	int ret;
 	u32 mask = PCM3060_MRST_MASK | PCM3060_SRST_MASK;
 	unsigned long sysclk = min(pcm3060->sysclk_dac, pcm3060->sysclk_adc);
 
@@ -172,8 +170,7 @@ static int pcm3060_reset(struct pcm3060_priv *pcm3060)
 
 static int pcm3060_digital_mute(struct snd_soc_dai *dai, int mute)
 {
-	struct snd_soc_codec *codec = dai->codec;
-	struct pcm3060_priv *pcm3060 = snd_soc_codec_get_drvdata(codec);
+	struct pcm3060_priv *pcm3060 = snd_soc_codec_get_drvdata(dai->codec);
 	u32 mask = PCM3060_DAC_MUTE_R_MASK | PCM3060_DAC_MUTE_L_MASK;
 
 	regmap_update_bits(pcm3060->regmap, PCM3060_DAC_OV_PH_MUTE,
@@ -182,11 +179,10 @@ static int pcm3060_digital_mute(struct snd_soc_dai *dai, int mute)
 	return 0;
 }
 
-static int pcm3060_set_dai_sysclk_dac(struct snd_soc_dai *codec_dai,
+static int pcm3060_set_dai_sysclk_dac(struct snd_soc_dai *dai,
 				  int clk_id, unsigned int freq, int dir)
 {
-	struct snd_soc_codec *codec = codec_dai->codec;
-	struct pcm3060_priv *pcm3060 = snd_soc_codec_get_drvdata(codec);
+	struct pcm3060_priv *pcm3060 = snd_soc_codec_get_drvdata(dai->codec);
 
 	if (freq > PCM1368A_MAX_SYSCLK)
 		return -EINVAL;
@@ -196,11 +192,10 @@ static int pcm3060_set_dai_sysclk_dac(struct snd_soc_dai *codec_dai,
 	return 0;
 }
 
-static int pcm3060_set_dai_sysclk_adc(struct snd_soc_dai *codec_dai,
+static int pcm3060_set_dai_sysclk_adc(struct snd_soc_dai *dai,
 				  int clk_id, unsigned int freq, int dir)
 {
-	struct snd_soc_codec *codec = codec_dai->codec;
-	struct pcm3060_priv *pcm3060 = snd_soc_codec_get_drvdata(codec);
+	struct pcm3060_priv *pcm3060 = snd_soc_codec_get_drvdata(dai->codec);
 
 	if (freq > PCM1368A_MAX_SYSCLK)
 		return -EINVAL;
@@ -210,23 +205,13 @@ static int pcm3060_set_dai_sysclk_adc(struct snd_soc_dai *codec_dai,
 	return 0;
 }
 
-static int pcm3060_set_dai_fmt(struct snd_soc_dai *codec_dai,
+static int pcm3060_set_dai_fmt(struct snd_soc_dai *dai,
 			       unsigned int format, bool dac)
 {
-	struct snd_soc_codec *codec = codec_dai->codec;
+	struct snd_soc_codec *codec = dai->codec;
 	struct pcm3060_priv *pcm3060 = snd_soc_codec_get_drvdata(codec);
 	u32 fmt, reg, mask, shift;
 	bool slave_mode;
-
-	if (dac) {
-		reg = PCM3060_DAC_FMT;
-		mask = PCM3060_DAC_FMT_MASK;
-		shift = PCM3060_DAC_FMT_SHIFT;
-	} else {
-		reg = PCM3060_ADC_FMT;
-		mask = PCM3060_ADC_FMT_MASK;
-		shift = PCM3060_ADC_FMT_SHIFT;
-	}
 
 	switch (format & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_LEFT_J:
@@ -243,8 +228,6 @@ static int pcm3060_set_dai_fmt(struct snd_soc_dai *codec_dai,
 		return -EINVAL;
 	}
 
-	regmap_update_bits(pcm3060->regmap, reg, mask, fmt << shift);
-
 	switch (format & SND_SOC_DAIFMT_MASTER_MASK) {
 	case SND_SOC_DAIFMT_CBS_CFS:
 		slave_mode = true;
@@ -257,34 +240,43 @@ static int pcm3060_set_dai_fmt(struct snd_soc_dai *codec_dai,
 		return -EINVAL;
 	}
 
-	if (dac) {
-		pcm3060->dac_slave_mode = slave_mode;
-		pcm3060->dac_fmt = fmt;
-	} else {
-		pcm3060->adc_slave_mode = slave_mode;
-		pcm3060->adc_fmt = fmt;
-	}
-
 	switch (format & SND_SOC_DAIFMT_INV_MASK) {
 	case SND_SOC_DAIFMT_NB_NF:
 		break;
 	default:
+		dev_err(codec->dev, "LRCLK/BCLK inversion not supported\n");
 		return -EINVAL;
 	}
+
+	if (dac) {
+		reg = PCM3060_DAC_FMT;
+		mask = PCM3060_DAC_FMT_MASK;
+		shift = PCM3060_DAC_FMT_SHIFT;
+		pcm3060->dac_slave_mode = slave_mode;
+		pcm3060->dac_fmt = fmt;
+	} else {
+		reg = PCM3060_ADC_FMT;
+		mask = PCM3060_ADC_FMT_MASK;
+		shift = PCM3060_ADC_FMT_SHIFT;
+		pcm3060->adc_slave_mode = slave_mode;
+		pcm3060->adc_fmt = fmt;
+	}
+
+	regmap_update_bits(pcm3060->regmap, reg, mask, fmt << shift);
 
 	return 0;
 }
 
-static int pcm3060_set_dai_fmt_dac(struct snd_soc_dai *codec_dai,
+static int pcm3060_set_dai_fmt_dac(struct snd_soc_dai *dai,
 			       unsigned int format)
 {
-	return pcm3060_set_dai_fmt(codec_dai, format, true);
+	return pcm3060_set_dai_fmt(dai, format, true);
 }
 
-static int pcm3060_set_dai_fmt_adc(struct snd_soc_dai *codec_dai,
+static int pcm3060_set_dai_fmt_adc(struct snd_soc_dai *dai,
 			       unsigned int format)
 {
-	return pcm3060_set_dai_fmt(codec_dai, format, false);
+	return pcm3060_set_dai_fmt(dai, format, false);
 }
 
 static int pcm3060_hw_params(struct snd_pcm_substream *substream,
@@ -293,24 +285,23 @@ static int pcm3060_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_codec *codec = dai->codec;
 	struct pcm3060_priv *pcm3060 = snd_soc_codec_get_drvdata(codec);
-	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
-	u32 i, val, mask, shift, max_ratio, reg, ratio;
-	bool slave_mode;
-	unsigned int fmt, rate, channels, format;
+	u32 val, mask, shift, reg;
+	bool slave_mode, tx;
+	unsigned int fmt, rate, channels, max_ratio, ratio;
+	int i;
+	snd_pcm_format_t format;
 
 	rate = params_rate(params);
 	format = params_format(params);
 	channels = params_channels(params);
 
-	dev_dbg(dai->dev, "%s hw_params rate %u channels %u format %u\n",
-			tx ? "tx" : "rx", rate, channels, format);
-
+	tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 	if (tx) {
 		max_ratio = PCM3060_NUM_SCKI_RATIOS_DAC;
 		reg = PCM3060_DAC_FMT;
 		mask = PCM3060_DAC_MS_MASK;
 		shift = PCM3060_DAC_MS_SHIFT;
-		ratio = pcm3060->sysclk_dac / params_rate(params);
+		ratio = pcm3060->sysclk_dac / rate;
 		slave_mode = pcm3060->dac_slave_mode;
 		fmt = pcm3060->dac_fmt;
 	} else {
@@ -318,7 +309,7 @@ static int pcm3060_hw_params(struct snd_pcm_substream *substream,
 		reg = PCM3060_ADC_FMT;
 		mask = PCM3060_ADC_MS_MASK;
 		shift = PCM3060_ADC_MS_SHIFT;
-		ratio = pcm3060->sysclk_adc / params_rate(params);
+		ratio = pcm3060->sysclk_adc / rate;
 		slave_mode = pcm3060->adc_slave_mode;
 		fmt = pcm3060->adc_fmt;
 	}
@@ -333,8 +324,9 @@ static int pcm3060_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	if (!slave_mode && (format == SNDRV_PCM_FMTBIT_S24_3LE)) {
-		dev_err(codec->dev, "48-bit frames not supported in master mode\n");
+	if (!slave_mode && (format == SNDRV_PCM_FORMAT_S24_3LE)) {
+		dev_err(codec->dev,
+			"48-bit frames not supported in master mode\n");
 		return -EINVAL;
 	}
 
@@ -350,11 +342,11 @@ static int pcm3060_hw_params(struct snd_pcm_substream *substream,
 		shift = PCM3060_ADC_FMT_SHIFT;
 	}
 
-	if ((fmt == PCM3060_FMT_RIGHT_J) && (format == SNDRV_PCM_FMTBIT_S32)) {
+	if ((fmt == PCM3060_FMT_RIGHT_J) && (format == SNDRV_PCM_FORMAT_S32)) {
 		/*
-		 * 32-bit right justified not supported.
-		 * Change to 24-bit left justified
-		 * (PCM3060 will ignore the 8 lsbs for each 32 bit sample)
+		 * Justification has no effect here as the whole frame
+		 * is filled with the samples, but the register field
+		 * must be set to left justified for correct operation
 		 */
 		fmt = PCM3060_FMT_LEFT_J;
 	}
@@ -415,8 +407,6 @@ static const struct reg_default pcm3060_reg_default[] = {
 	{ PCM3060_ADC_FMT, 0x00 },
 	{ PCM3060_ADC_OPT, 0x00 },
 };
-
-
 
 static bool pcm3060_volatile_register(struct device *dev, unsigned int reg)
 {

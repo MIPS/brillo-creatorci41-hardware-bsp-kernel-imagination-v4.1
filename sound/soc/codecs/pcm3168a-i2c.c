@@ -10,7 +10,6 @@
  * version 2, as published by the Free Software Foundation.
  */
 
-
 #include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/module.h>
