@@ -1,5 +1,5 @@
 /*
- * IMG I2S in controller driver
+ * IMG I2S input controller driver
  *
  * Copyright (C) 2015 Imagination Technologies Ltd.
  *
@@ -28,8 +28,6 @@
 #define IMG_I2S_IN_RX_FIFO			0x0
 
 #define IMG_I2S_IN_CTL				0x4
-#define IMG_I2S_IN_CTL_EXT_EN_MASK		BIT(25)
-#define IMG_I2S_IN_CTL_DATA_EN_MASK		BIT(24)
 #define IMG_I2S_IN_CTL_ACTIVE_CHAN_MASK		0xfffffffc
 #define IMG_I2S_IN_CTL_ACTIVE_CH_SHIFT		2
 #define IMG_I2S_IN_CTL_16PACK_MASK		BIT(1)
@@ -46,27 +44,25 @@
 #define IMG_I2S_IN_CH_CTL_CLK_TRANS_MASK	BIT(8)
 #define IMG_I2S_IN_CH_CTL_BLKP_MASK		BIT(7)
 #define IMG_I2S_IN_CH_CTL_FIFO_FLUSH_MASK	BIT(6)
-#define IMG_I2S_IN_CH_CTL_LSB_FIRST_MASK	BIT(5)
-#define IMG_I2S_IN_CH_CTL_CET_MASK		BIT(4)
 #define IMG_I2S_IN_CH_CTL_LRD_MASK		BIT(3)
 #define IMG_I2S_IN_CH_CTL_FW_MASK		BIT(2)
 #define IMG_I2S_IN_CH_CTL_SW_MASK		BIT(1)
 #define IMG_I2S_IN_CH_CTL_ME_MASK		BIT(0)
 
+#define IMG_I2S_IN_CH_STRIDE			0x20
+
 struct img_i2s_in {
-	spinlock_t lock;
 	void __iomem *base;
 	struct clk *clk_sys;
 	struct snd_dmaengine_dai_dma_data dma_data;
 	struct device *dev;
 	unsigned int max_i2s_chan;
 	void __iomem *channel_base;
-	bool active;
 	unsigned int active_channels;
+	struct snd_soc_dai_driver dai_driver;
 };
 
-static inline void img_i2s_in_writel(struct img_i2s_in *i2s, u32 val,
-					u32 reg)
+static inline void img_i2s_in_writel(struct img_i2s_in *i2s, u32 val, u32 reg)
 {
 	writel(val, i2s->base + reg);
 }
@@ -79,13 +75,13 @@ static inline u32 img_i2s_in_readl(struct img_i2s_in *i2s, u32 reg)
 static inline void img_i2s_in_ch_writel(struct img_i2s_in *i2s, u32 chan,
 					u32 val, u32 reg)
 {
-	writel(val, i2s->channel_base + (chan * 0x20) + reg);
+	writel(val, i2s->channel_base + (chan * IMG_I2S_IN_CH_STRIDE) + reg);
 }
 
 static inline u32 img_i2s_in_ch_readl(struct img_i2s_in *i2s, u32 chan,
 					u32 reg)
 {
-	return readl(i2s->channel_base + (chan * 0x20) + reg);
+	return readl(i2s->channel_base + (chan * IMG_I2S_IN_CH_STRIDE) + reg);
 }
 
 static inline u32 img_i2s_in_ch_disable(struct img_i2s_in *i2s, u32 chan)
@@ -121,14 +117,44 @@ static inline void img_i2s_in_flush(struct img_i2s_in *i2s)
 	}
 }
 
+static int img_i2s_in_trigger(struct snd_pcm_substream *substream, int cmd,
+	struct snd_soc_dai *dai)
+{
+	struct img_i2s_in *i2s = snd_soc_dai_get_drvdata(dai);
+	u32 reg;
+
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		reg = img_i2s_in_readl(i2s, IMG_I2S_IN_CTL);
+		reg |= IMG_I2S_IN_CTL_ME_MASK;
+		img_i2s_in_writel(i2s, reg, IMG_I2S_IN_CTL);
+		break;
+
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		reg = img_i2s_in_readl(i2s, IMG_I2S_IN_CTL);
+		reg &= ~IMG_I2S_IN_CTL_ME_MASK;
+		img_i2s_in_writel(i2s, reg, IMG_I2S_IN_CTL);
+		img_i2s_in_flush(i2s);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int img_i2s_in_check_rate(struct img_i2s_in *i2s,
-		long max_sample_rate, unsigned int frame_size,
+		unsigned int sample_rate, unsigned int frame_size,
 		unsigned int *bclk_filter_enable,
 		unsigned int *bclk_filter_value)
 {
-	unsigned long bclk_freq, cur_freq;
+	unsigned int bclk_freq, cur_freq;
 
-	bclk_freq = max_sample_rate * frame_size;
+	bclk_freq = sample_rate * frame_size;
 
 	cur_freq = clk_get_rate(i2s->clk_sys);
 
@@ -142,72 +168,38 @@ static int img_i2s_in_check_rate(struct img_i2s_in *i2s,
 		*bclk_filter_enable = 0;
 		*bclk_filter_value = 0;
 	} else {
+		dev_err(i2s->dev,
+			"Sys clock rate %u insufficient for sample rate %u\n",
+			cur_freq, sample_rate);
 		return -EINVAL;
 	}
 
 	return 0;
 }
 
-static int img_i2s_in_trigger(struct snd_pcm_substream *substream, int cmd,
-	struct snd_soc_dai *dai)
-{
-	struct img_i2s_in *i2s = snd_soc_dai_get_drvdata(dai);
-	u32 reg;
-	unsigned long flags;
-	int ret = 0;
-
-	dev_dbg(i2s->dev, "trigger cmd %d\n", cmd);
-
-	spin_lock_irqsave(&i2s->lock, flags);
-
-	switch (cmd) {
-	case SNDRV_PCM_TRIGGER_START:
-	case SNDRV_PCM_TRIGGER_RESUME:
-	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		reg = img_i2s_in_readl(i2s, IMG_I2S_IN_CTL);
-		reg |= IMG_I2S_IN_CTL_ME_MASK;
-		img_i2s_in_writel(i2s, reg, IMG_I2S_IN_CTL);
-		i2s->active = true;
-		break;
-
-	case SNDRV_PCM_TRIGGER_STOP:
-	case SNDRV_PCM_TRIGGER_SUSPEND:
-	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		reg = img_i2s_in_readl(i2s, IMG_I2S_IN_CTL);
-		reg &= ~IMG_I2S_IN_CTL_ME_MASK;
-		img_i2s_in_writel(i2s, reg, IMG_I2S_IN_CTL);
-		img_i2s_in_flush(i2s);
-		i2s->active = false;
-		break;
-	default:
-		ret = -EINVAL;
-	}
-
-	spin_unlock_irqrestore(&i2s->lock, flags);
-
-	return ret;
-}
-
 static int img_i2s_in_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	struct img_i2s_in *i2s = snd_soc_dai_get_drvdata(dai);
-	unsigned int rate, channels, format, i2s_channels, frame_size;
+	unsigned int rate, channels, i2s_channels, frame_size;
 	unsigned int bclk_filter_enable, bclk_filter_value;
 	int i, ret = 0;
 	u32 reg, control_reg, control_mask, chan_control_mask;
 	u32 control_set = 0, chan_control_set = 0;
-	unsigned long flags;
+	snd_pcm_format_t format;
 
 	rate = params_rate(params);
 	format = params_format(params);
 	channels = params_channels(params);
 	i2s_channels = channels / 2;
 
-	dev_dbg(i2s->dev, "hw_params rate %u channels %u format %u\n",
-			rate, channels, format);
-
 	switch (format) {
+	case SNDRV_PCM_FORMAT_S32_LE:
+		frame_size = 64;
+		chan_control_set |= IMG_I2S_IN_CH_CTL_SW_MASK;
+		chan_control_set |= IMG_I2S_IN_CH_CTL_FW_MASK;
+		chan_control_set |= IMG_I2S_IN_CH_CTL_PACKH_MASK;
+		break;
 	case SNDRV_PCM_FORMAT_S24_LE:
 		frame_size = 64;
 		chan_control_set |= IMG_I2S_IN_CH_CTL_SW_MASK;
@@ -240,16 +232,15 @@ static int img_i2s_in_hw_params(struct snd_pcm_substream *substream,
 	if (bclk_filter_value)
 		chan_control_set |= IMG_I2S_IN_CH_CTL_FMODE_MASK;
 
-	control_mask = ~IMG_I2S_IN_CTL_16PACK_MASK &
-			~IMG_I2S_IN_CTL_ACTIVE_CHAN_MASK;
+	control_mask = (u32)(~IMG_I2S_IN_CTL_16PACK_MASK &
+			~IMG_I2S_IN_CTL_ACTIVE_CHAN_MASK);
 
-	chan_control_mask = ~IMG_I2S_IN_CH_CTL_16PACK_MASK &
+	chan_control_mask = (u32)(~IMG_I2S_IN_CH_CTL_16PACK_MASK &
 			~IMG_I2S_IN_CH_CTL_FEN_MASK &
 			~IMG_I2S_IN_CH_CTL_FMODE_MASK &
 			~IMG_I2S_IN_CH_CTL_SW_MASK &
-			~IMG_I2S_IN_CH_CTL_FW_MASK;
-
-	spin_lock_irqsave(&i2s->lock, flags);
+			~IMG_I2S_IN_CH_CTL_FW_MASK &
+			~IMG_I2S_IN_CH_CTL_PACKH_MASK);
 
 	control_reg = img_i2s_in_readl(i2s, IMG_I2S_IN_CTL);
 	control_reg = (control_reg & control_mask) | control_set;
@@ -269,8 +260,6 @@ static int img_i2s_in_hw_params(struct snd_pcm_substream *substream,
 
 	i2s->active_channels = i2s_channels;
 
-	spin_unlock_irqrestore(&i2s->lock, flags);
-
 	return 0;
 }
 
@@ -278,11 +267,8 @@ static int img_i2s_in_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 {
 	struct img_i2s_in *i2s = snd_soc_dai_get_drvdata(dai);
 	int i;
-	unsigned long flags;
 	u32 chan_control_mask, lrd_set = 0, blkp_set = 0, chan_control_set = 0;
 	u32 reg;
-
-	dev_dbg(i2s->dev, "set format %#x\n", fmt);
 
 	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
 	case SND_SOC_DAIFMT_NB_NF:
@@ -318,46 +304,31 @@ static int img_i2s_in_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 		return -EINVAL;
 	}
 
-	chan_control_mask = ~IMG_I2S_IN_CH_CTL_CLK_TRANS_MASK;
-
-	spin_lock_irqsave(&i2s->lock, flags);
-
-	if (i2s->active) {
-		spin_unlock_irqrestore(&i2s->lock, flags);
-		return -EBUSY;
-	}
+	chan_control_mask = (u32)~IMG_I2S_IN_CH_CTL_CLK_TRANS_MASK;
 
 	/*
-	 * BLKP and LRD must be set while the channel is enabled, during
-	 * separate register writes
+	 * BLKP and LRD must be set during separate register writes
 	 */
 	for (i = 0; i < i2s->active_channels; i++) {
 		reg = img_i2s_in_ch_disable(i2s, i);
 		reg = (reg & chan_control_mask) | chan_control_set;
 		img_i2s_in_ch_writel(i2s, i, reg, IMG_I2S_IN_CH_CTL);
-		reg |= IMG_I2S_IN_CH_CTL_ME_MASK;
-		img_i2s_in_ch_writel(i2s, i, reg, IMG_I2S_IN_CH_CTL);
 		reg = (reg & ~IMG_I2S_IN_CH_CTL_BLKP_MASK) | blkp_set;
 		img_i2s_in_ch_writel(i2s, i, reg, IMG_I2S_IN_CH_CTL);
 		reg = (reg & ~IMG_I2S_IN_CH_CTL_LRD_MASK) | lrd_set;
 		img_i2s_in_ch_writel(i2s, i, reg, IMG_I2S_IN_CH_CTL);
+		img_i2s_in_ch_enable(i2s, i, reg);
 	}
 
 	for (; i < i2s->max_i2s_chan; i++) {
 		reg = img_i2s_in_ch_readl(i2s, i, IMG_I2S_IN_CH_CTL);
 		reg = (reg & chan_control_mask) | chan_control_set;
 		img_i2s_in_ch_writel(i2s, i, reg, IMG_I2S_IN_CH_CTL);
-		reg |= IMG_I2S_IN_CH_CTL_ME_MASK;
-		img_i2s_in_ch_writel(i2s, i, reg, IMG_I2S_IN_CH_CTL);
 		reg = (reg & ~IMG_I2S_IN_CH_CTL_BLKP_MASK) | blkp_set;
 		img_i2s_in_ch_writel(i2s, i, reg, IMG_I2S_IN_CH_CTL);
 		reg = (reg & ~IMG_I2S_IN_CH_CTL_LRD_MASK) | lrd_set;
 		img_i2s_in_ch_writel(i2s, i, reg, IMG_I2S_IN_CH_CTL);
-		reg &= ~IMG_I2S_IN_CH_CTL_ME_MASK;
-		img_i2s_in_ch_writel(i2s, i, reg, IMG_I2S_IN_CH_CTL);
 	}
-
-	spin_unlock_irqrestore(&i2s->lock, flags);
 
 	return 0;
 }
@@ -376,17 +347,6 @@ static int img_i2s_in_dai_probe(struct snd_soc_dai *dai)
 
 	return 0;
 }
-
-static struct snd_soc_dai_driver img_i2s_in_dai = {
-	.probe = img_i2s_in_dai_probe,
-	.capture = {
-		.channels_min = 2,
-		.channels_max = 0, /* set during probe */
-		.rates = SNDRV_PCM_RATE_8000_192000,
-		.formats = SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE
-	},
-	.ops = &img_i2s_in_dai_ops
-};
 
 static const struct snd_soc_component_driver img_i2s_in_component = {
 	.name = "img-i2s-in"
@@ -461,9 +421,17 @@ static int img_i2s_in_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	i2s->active_channels = 1;
 	i2s->dma_data.addr = res->start + IMG_I2S_IN_RX_FIFO;
 	i2s->dma_data.addr_width = 4;
-	img_i2s_in_dai.capture.channels_max = i2s->max_i2s_chan * 2;
+
+	i2s->dai_driver.probe = img_i2s_in_dai_probe;
+	i2s->dai_driver.capture.channels_min = 2;
+	i2s->dai_driver.capture.channels_max = i2s->max_i2s_chan * 2;
+	i2s->dai_driver.capture.rates = SNDRV_PCM_RATE_8000_192000;
+	i2s->dai_driver.capture.formats = SNDRV_PCM_FMTBIT_S32_LE |
+		SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE;
+	i2s->dai_driver.ops = &img_i2s_in_dai_ops;
 
 	rst = devm_reset_control_get(dev, "rst");
 	if (IS_ERR(rst)) {
@@ -493,10 +461,8 @@ static int img_i2s_in_probe(struct platform_device *pdev)
 			IMG_I2S_IN_CH_CTL_JUST_MASK |
 			IMG_I2S_IN_CH_CTL_FW_MASK, IMG_I2S_IN_CH_CTL);
 
-	spin_lock_init(&i2s->lock);
-
 	ret = devm_snd_soc_register_component(dev, &img_i2s_in_component,
-					 &img_i2s_in_dai, 1);
+						&i2s->dai_driver, 1);
 	if (ret)
 		goto err_clk_disable;
 
@@ -525,7 +491,7 @@ static const struct of_device_id img_i2s_in_of_match[] = {
 	{ .compatible = "img,i2s-in" },
 	{}
 };
-MODULE_DEVICE_TABLE(of, img_i2s_of_match);
+MODULE_DEVICE_TABLE(of, img_i2s_in_of_match);
 
 static struct platform_driver img_i2s_in_driver = {
 	.driver = {
