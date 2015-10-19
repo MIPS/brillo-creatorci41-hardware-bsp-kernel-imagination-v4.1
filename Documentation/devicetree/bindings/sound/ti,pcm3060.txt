@@ -27,7 +27,8 @@ i2c0: i2c0@0 {
 	pcm3060: audio-codec@46 {
 		compatible = "ti,pcm3060";
 		reg = <0x46>;
-		clocks = <&clk_core CLK_I2S &clk_core CLK_I2S>;
+		clocks = <&clk_core CLK_I2S>,
+			 <&clk_core CLK_I2S>;
 		clock-names = "sckid", "sckia";
 		VCC-supply = <&supply5v0>;
 		VDD-supply = <&supply3v3>;
