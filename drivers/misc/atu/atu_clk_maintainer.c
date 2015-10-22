@@ -28,7 +28,7 @@
 #include "atu_clk_ntp.h"
 
 static int atu_rate_changed;
-#define ATU_UPDATE_TIMER_INTRVL     1
+#define ATU_UPDATE_TIMER_INTRVL	1
 #define ATU_MODE_ON_THE_FLY	0x80000000
 
 /* Structure holding internal clk managing values. */
@@ -115,7 +115,8 @@ static int atu_gettimestamp(struct atu_event *event)
 	if (event->counter < ATU_MAX_COUNTERS) {
 		spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
 		if (!patu_clk_mtner->atu_timecntr.cc) {
-			spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
+			spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock,
+					       flags);
 			return -EFAULT;
 		}
 		event->timestamp_counter =
@@ -171,9 +172,8 @@ ioctl_img_atu(struct file *file, unsigned int cmd, unsigned long arg)
 		if (copy_from_user(&u_txc, argp, sizeof(u_txc)))
 			return -EFAULT;
 
-		if (u_txc.modes == 0) {
+		if (u_txc.modes == 0)
 			return -EINVAL;
-		}
 
 		ret = atu_adjtimex(&u_txc);
 
@@ -198,7 +198,7 @@ ioctl_img_atu(struct file *file, unsigned int cmd, unsigned long arg)
 		spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
 		if (!patu_clk_mtner->atu_timecntr.cc) {
 			spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock,
-									flags);
+					       flags);
 			return -EFAULT;
 		}
 		atu_getnstimeofday(&u_ts);
@@ -246,7 +246,7 @@ static int atu_chardev_remove(void)
 
 static void
 atu_clk_mtner_setup_internals(struct cyclecounter *patu_cyclecntr,
-				struct clk *clk_atu)
+			      struct clk *clk_atu)
 {
 	cycle_t clk_cycle;
 	u64 tmp, ntp_ns_per_cycle;
@@ -267,11 +267,11 @@ atu_clk_mtner_setup_internals(struct cyclecounter *patu_cyclecntr,
 	if (tmp == 0)
 		tmp = 1;
 
-	clk_cycle = (cycle_t) tmp;
+	clk_cycle = (cycle_t)tmp;
 	patu_clk_mtner->clk_cycles_per_ntp_cycle = clk_cycle;
 
 	patu_clk_mtner->shifted_ns_per_ntp_cycle =
-		(u64) clk_cycle * patu_clk_mtner->atu_timecntr.cc->mult;
+		(u64)clk_cycle * patu_clk_mtner->atu_timecntr.cc->mult;
 	patu_clk_mtner->shifted_remain_ns_per_ntp_cycle =
 		ntp_ns_per_cycle - patu_clk_mtner->shifted_ns_per_ntp_cycle;
 
@@ -324,7 +324,7 @@ void atu_getnstimeofday(struct timespec *ts)
 {
 	s64 nsecs;
 
-	if (ts == NULL)
+	if (!ts)
 		return;
 	*ts = patu_clk_mtner->atu_time;
 	nsecs = atu_tm_get_ns();
@@ -432,7 +432,7 @@ static void atu_get_cur_atu_frc_pair(u64 *patu, u32 *pfrc)
 
 	/* Convert to nanoseconds */
 	nsecs = clocksource_cyc2ns(ticks_delta, patu_clk_mtner->mult,
-				  patu_clk_mtner->shift);
+				   patu_clk_mtner->shift);
 
 	nsecs += ((u64)ts.tv_sec * NSEC_PER_SEC) + ((u64)ts.tv_nsec);
 
@@ -446,11 +446,11 @@ int frc_to_atu(u32 frc, u64 *patu, s32 dir)
 	u64 cur_atu;
 	unsigned long flags;
 
-	if (patu == NULL)
+	if (!patu)
 		return -EINVAL;
 
 	spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
-	if (patu_clk_mtner->atu_timecntr.cc == NULL) {
+	if (!patu_clk_mtner->atu_timecntr.cc) {
 		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 		return -EFAULT;
 	}
@@ -484,11 +484,11 @@ int atu_to_frc(u64 atu, u32 *pfrc, u64 min_nsec)
 	u32 cur_frc;
 	unsigned long flags;
 
-	if (pfrc == NULL)
+	if (!pfrc)
 		return -EINVAL;
 
 	spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
-	if (patu_clk_mtner->atu_timecntr.cc == NULL) {
+	if (!patu_clk_mtner->atu_timecntr.cc) {
 		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 		return -EFAULT;
 	}
@@ -527,7 +527,7 @@ void
 atu_clocks_calc_mult_shift(u32 *mult, u32 *shift, u32 from, u32 to, u32 maxsec)
 {
 	u64 tmp;
-	u32 sft, sftacc= 32;
+	u32 sft, sftacc = 32;
 
 	/*
 	 * Calculate the shift factor which is limiting the conversion
@@ -535,7 +535,7 @@ atu_clocks_calc_mult_shift(u32 *mult, u32 *shift, u32 from, u32 to, u32 maxsec)
 	 */
 	tmp = ((u64)maxsec * from) >> 32;
 	while (tmp) {
-		tmp >>=1;
+		tmp >>= 1;
 		sftacc--;
 	}
 
@@ -544,7 +544,7 @@ atu_clocks_calc_mult_shift(u32 *mult, u32 *shift, u32 from, u32 to, u32 maxsec)
 	 * accuracy and fits the maxsec conversion range:
 	 */
 	for (sft = 32; sft > 0; sft--) {
-		tmp = (u64) to << sft;
+		tmp = (u64)to << sft;
 		tmp += from / 2;
 		do_div(tmp, from);
 		if ((tmp >> sftacc) == 0)
@@ -727,7 +727,7 @@ static void atu_tm_adj_clk(s64 ticks)
 				mult = 1;
 		else
 				mult = atu_tm_big_adj_clk(error, &clk_cycle,
-								&ticks);
+							  &ticks);
 	} else if (error < -clk_cycle) {
 		error >>= 3;
 
@@ -737,7 +737,7 @@ static void atu_tm_adj_clk(s64 ticks)
 				ticks = -ticks;
 		} else {
 				mult = atu_tm_big_adj_clk(error, &clk_cycle,
-								&ticks);
+							  &ticks);
 		}
 	} else {
 		return;
@@ -815,24 +815,25 @@ static void atu_update_clk_time(void)
 	/* If tv_nsec is -ve we will adjust that as error */
 	if (unlikely((s64)patu_clk_mtner->atu_time.tv_nsec < 0)) {
 		s64 neg = -(s64)patu_clk_mtner->atu_time.tv_nsec;
+
 		patu_clk_mtner->atu_time.tv_nsec = 0;
 		patu_clk_mtner->tm_error +=
 			neg << patu_clk_mtner->tm_error_shift;
 	}
 
-	while((patu_clk_mtner->atu_time.tv_nsec >= NSEC_PER_SEC)) {
+	while ((patu_clk_mtner->atu_time.tv_nsec >= NSEC_PER_SEC)) {
 		patu_clk_mtner->atu_time.tv_nsec -= NSEC_PER_SEC;
 		patu_clk_mtner->atu_time.tv_sec++;
 		atu_ntp_param_update_per_second(&patu_clk_mtner->atu_ntp);
 	}
 }
 
-static void atu_time_update()
+static void atu_time_update(void)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
-	if (patu_clk_mtner->atu_timecntr.cc == NULL) {
+	if (!patu_clk_mtner->atu_timecntr.cc) {
 		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 		return;
 	}
@@ -872,7 +873,7 @@ int atu_cyclecounter_register(struct cyclecounter *pcc, struct clk *clk_atu)
 {
 	unsigned long flags;
 
-	if (pcc == NULL) {
+	if (!pcc) {
 		pr_err("%s got NULL pointer\n", __func__);
 		return -EINVAL;
 	}
@@ -883,7 +884,7 @@ int atu_cyclecounter_register(struct cyclecounter *pcc, struct clk *clk_atu)
 		pr_info("Register Fixed PLL to ATU Clock\n");
 
 	if (clk_atu) {
-		patu_clk_mtner->event_timer_rate = clk_get_rate(clk_atu);;
+		patu_clk_mtner->event_timer_rate = clk_get_rate(clk_atu);
 		patu_clk_mtner->atu_clk_notifier.notifier_call =
 				atu_clk_notifier_cb;
 		clk_notifier_register(clk_atu,
@@ -908,7 +909,7 @@ int atu_cyclecounter_unregister(struct cyclecounter *pcc)
 {
 	unsigned long flags;
 
-	if (pcc == NULL) {
+	if (!pcc) {
 		pr_err("%s got NULL pointer\n", __func__);
 		return -EINVAL;
 	}
@@ -918,7 +919,7 @@ int atu_cyclecounter_unregister(struct cyclecounter *pcc)
 	}
 	if (patu_clk_mtner->clk_atu)
 		clk_notifier_unregister(patu_clk_mtner->clk_atu,
-			&patu_clk_mtner->atu_clk_notifier);
+					&patu_clk_mtner->atu_clk_notifier);
 
 	atu_timer_exit();
 	atu_chardev_remove();
@@ -938,7 +939,7 @@ static int __init atu_tm_init(void)
 	if (!patu_clk_mtner)
 		return -ENOMEM;
 
-	/* initialise the spin lock */
+	/* Initialise the spin lock */
 	spin_lock_init(&patu_clk_mtner->atu_clk_lock);
 
 	/* Initialise ATU wall time */
