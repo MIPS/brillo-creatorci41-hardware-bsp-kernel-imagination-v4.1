@@ -30,6 +30,7 @@
 static int atu_rate_changed;
 #define ATU_UPDATE_TIMER_INTRVL	1
 #define ATU_MODE_ON_THE_FLY	0x80000000
+#define EVENT_TIMER_RATE_TOLERANCE	100000
 
 /* Structure holding internal clk managing values. */
 struct atu_clk_maintainer {
@@ -605,33 +606,31 @@ static int atu_adjtimex(struct timex *txc)
 
 	/* Fractional PLL */
 	if (patu_clk_mtner->clk_atu) {
-		/* Mode to check the rate change on the fly */
+
+		spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
+		/*
+		 * Mode (utilizing the txc->modes) to check
+		 * the rate change on the fly
+		 */
+
 		if (txc->modes == ATU_MODE_ON_THE_FLY) {
-			spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
 			if (atu_rate_changed) {
 				atu_rate_changed = 0;
 				ret = 1;
 			}
-			spin_unlock_irqrestore(
-				&patu_clk_mtner->atu_clk_lock, flags);
-			return ret;
+			goto unlock_and_return;
 		}
-		spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
 		if (atu_rate_changed) {
-			spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock,
-					       flags);
-			return 0;
+			ret = 0;
+			goto unlock_and_return;
 		}
-		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 
 		/* Time error correction - ADJ_SETOFFSET */
 		if (txc->modes & ADJ_SETOFFSET) {
-			spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
 			ret = atu_set_time_offset(txc);
-			spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock,
-					       flags);
-			return ret;
+			goto unlock_and_return;
 		}
+		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 
 		/* Rate error correction - ADJ_FREQUENCY */
 		if (txc->modes & ADJ_FREQUENCY) {
@@ -666,6 +665,10 @@ static int atu_adjtimex(struct timex *txc)
 		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 	}
 
+	return ret;
+
+unlock_and_return:
+	spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 	return ret;
 }
 
@@ -856,7 +859,7 @@ static int atu_clk_notifier_cb(struct notifier_block *nb,
 		 *  Assumption is that card driver rate change
 		 *  will be more than 100,000 Hz
 		 */
-		if (diff > 100000) {
+		if (diff > EVENT_TIMER_RATE_TOLERANCE) {
 			atu_clk_rate_change_on_the_fly(ndata->new_rate);
 			pr_debug("ATU rate change %lu\n", ndata->new_rate);
 		}
