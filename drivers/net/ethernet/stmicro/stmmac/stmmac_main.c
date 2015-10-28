@@ -3007,8 +3007,11 @@ int stmmac_suspend(struct net_device *ndev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	unsigned long flags;
 
-	if (!ndev || !netif_running(ndev))
+	if (!ndev || !netif_running(ndev)) {
+		clk_disable(priv->pclk);
+		clk_disable(priv->stmmac_clk);
 		return 0;
+	}
 
 	if (priv->phydev)
 		phy_stop(priv->phydev);
@@ -3057,8 +3060,11 @@ int stmmac_resume(struct net_device *ndev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	unsigned long flags;
 
-	if (!netif_running(ndev))
+	if (!netif_running(ndev)) {
+		clk_enable(priv->stmmac_clk);
+		clk_enable(priv->pclk);
 		return 0;
+	}
 
 	spin_lock_irqsave(&priv->lock, flags);
 
