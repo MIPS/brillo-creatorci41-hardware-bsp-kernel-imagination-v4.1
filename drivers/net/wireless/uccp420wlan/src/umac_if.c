@@ -837,7 +837,7 @@ int uccp420wlan_prog_vht_bform(unsigned int vht_beamform_status,
 }
 
 
-int uccp420wlan_prog_roc(unsigned int roc_status,
+int uccp420wlan_prog_roc(unsigned int roc_ctrl,
 			 unsigned int roc_channel,
 			 unsigned int roc_duration)
 {
@@ -845,7 +845,7 @@ int uccp420wlan_prog_roc(unsigned int roc_status,
 
 	memset(&cmd_roc, 0, sizeof(struct cmd_roc));
 
-	cmd_roc.roc_status	= roc_status;
+	cmd_roc.roc_ctrl	= roc_ctrl;
 	cmd_roc.roc_channel	= roc_channel;
 	cmd_roc.roc_duration	= roc_duration;
 
