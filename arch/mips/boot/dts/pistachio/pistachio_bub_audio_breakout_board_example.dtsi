@@ -21,7 +21,7 @@
 		compatible = "img,pistachio-audio";
 
 		clocks = <&clk_core CLK_AUDIO_PLL>,
-			 <&clk_core CLK_I2S_DIV>,
+			 <&clk_core CLK_I2S>,
 			 <&clk_core CLK_AUDIO>;
 		clock-names = "audio_pll", "i2s_mclk", "dac_clk";
 
