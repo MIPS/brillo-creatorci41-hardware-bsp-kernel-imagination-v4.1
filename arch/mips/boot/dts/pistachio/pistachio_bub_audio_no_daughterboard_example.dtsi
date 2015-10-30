@@ -131,6 +131,8 @@
 
 &i2s_in {
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2s_in_pins>;
 };
 
 &spdif_out {
