@@ -1121,6 +1121,7 @@ static void init_hw(struct ieee80211_hw *hw)
 	hw->flags |= IEEE80211_HW_HOST_BROADCAST_PS_BUFFERING;
 	hw->flags |= IEEE80211_HW_AMPDU_AGGREGATION;
 	hw->flags |= IEEE80211_HW_MFP_CAPABLE;
+	hw->flags |= IEEE80211_HW_REPORTS_TX_ACK_STATUS;
 
 	if (wifi->params.dot11a_support)
 		hw->flags |= IEEE80211_HW_SPECTRUM_MGMT;
