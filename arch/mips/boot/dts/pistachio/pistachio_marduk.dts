@@ -172,6 +172,7 @@
 		compatible = "jedec,spi-nor";
 		reg = <0>;
 		spi-max-frequency = <50000000>;
+		linux,mtd-name = "spi-nor";
 	};
 
 	flash@1 {
@@ -181,6 +182,7 @@
 		nand-on-flash-bbt;
 		#address-cells = <1>;
 		#size-cells = <1>;
+		linux,mtd-name = "spi-nand";
 	};
 };
 
