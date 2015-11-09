@@ -545,6 +545,8 @@ static void mdc_issue_desc(struct mdc_chan *mchan)
 	dev_dbg(mdma2dev(mdma), "Issuing descriptor on channel %d\n",
 		mchan->chan_nr);
 
+	mdma->soc->enable_chan(mchan);
+
 	val = mdc_chan_readl(mchan, MDC_GENERAL_CONFIG);
 	val |= MDC_GENERAL_CONFIG_LIST_IEN | MDC_GENERAL_CONFIG_IEN |
 		MDC_GENERAL_CONFIG_LEVEL_INT | MDC_GENERAL_CONFIG_PHYSICAL_W |
@@ -558,8 +560,6 @@ static void mdc_issue_desc(struct mdc_chan *mchan)
 	val = mdc_chan_readl(mchan, MDC_CONTROL_AND_STATUS);
 	val |= MDC_CONTROL_AND_STATUS_LIST_EN;
 	mdc_chan_writel(mchan, val, MDC_CONTROL_AND_STATUS);
-
-	mdma->soc->enable_chan(mchan);
 }
 
 static void mdc_issue_pending(struct dma_chan *chan)
@@ -690,14 +690,11 @@ static unsigned int mdc_get_new_events(struct mdc_chan *mchan)
 static int mdc_terminate_all(struct dma_chan *chan)
 {
 	struct mdc_chan *mchan = to_mdc_chan(chan);
-	struct mdc_dma *mdma = mchan->mdma;
 	struct mdc_tx_desc *mdesc;
 	unsigned long flags;
 	LIST_HEAD(head);
 
 	spin_lock_irqsave(&mchan->vc.lock, flags);
-
-	mdma->soc->disable_chan(mchan);
 
 	mdc_chan_writel(mchan, MDC_CONTROL_AND_STATUS_CANCEL,
 			MDC_CONTROL_AND_STATUS);
@@ -743,7 +740,6 @@ static void mdc_free_chan_resources(struct dma_chan *chan)
 static irqreturn_t mdc_chan_irq(int irq, void *dev_id)
 {
 	struct mdc_chan *mchan = (struct mdc_chan *)dev_id;
-	struct mdc_dma *mdma = mchan->mdma;
 	struct mdc_tx_desc *mdesc;
 	unsigned int i, new_events;
 
@@ -783,7 +779,6 @@ static irqreturn_t mdc_chan_irq(int irq, void *dev_id)
 		} else if (mdesc->list_cmds_done == mdesc->list_len) {
 			mchan->desc = NULL;
 			vchan_cookie_complete(&mdesc->vd);
-			mdma->soc->disable_chan(mchan);
 			mdc_issue_desc(mchan);
 			break;
 		}
