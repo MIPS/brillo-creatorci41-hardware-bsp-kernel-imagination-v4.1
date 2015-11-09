@@ -361,7 +361,7 @@ int atu_settimeofday(const struct timespec *ts)
 		return -EINVAL;
 
 	spin_lock_irqsave(&patu_clk_mtner->atu_clk_lock, flags);
-	if (!patu_clk_mtner->atu_timecntr.cc || atu_rate_changed) {
+	if (!patu_clk_mtner->atu_timecntr.cc) {
 		spin_unlock_irqrestore(&patu_clk_mtner->atu_clk_lock, flags);
 		return -EFAULT;
 	}
