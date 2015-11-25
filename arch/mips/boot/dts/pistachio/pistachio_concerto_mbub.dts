@@ -10,7 +10,7 @@
 /dts-v1/;
 
 #include "pistachio.dtsi"
-#include <dt-bindings/sound/pistachio-bub-audio.h>
+#include <dt-bindings/sound/pistachio-audio.h>
 
 / {
 	model = "IMG Pistachio Concerto mBuB";
@@ -47,22 +47,18 @@
 	};
 
 	pistachio_audio_card {
-		compatible = "img,pistachio-bub-audio";
+		compatible = "img,pistachio-audio";
 
 		clocks = <&clk_core CLK_AUDIO_PLL>,
-			 <&clk_core CLK_I2S_DIV>,
-			 <&clk_core CLK_AUDIO>,
-			 <&event_timer>;
-		clock-names = "audio_pll", "i2s_mclk", "dac_clk", "evt_clk";
+			 <&clk_core CLK_I2S>,
+			 <&clk_core CLK_AUDIO>;
+		clock-names = "audio_pll", "i2s_mclk", "dac_clk";
 
-		img,daughterboard = <PISTACHIO_DAUGHTERBOARD_NONE>;
-		img,mclk = <PISTACHIO_MCLK_I2S>;
 		img,cr-periph = <&cr_periph>;
-		img,cr-top = <&cr_top>;
 		img,event-timer = <&event_timer>;
 
 		pinctrl-names = "default";
-		pinctrl-0 = <&i2s_mclk_pin>;
+		pinctrl-0 = <&dac_clk_pin>, <&i2s_mclk_pin>;
 
 		spdif-out {
 			cpu-dai = <&spdif_out>;
@@ -74,20 +70,35 @@
 
 		parallel-out {
 			cpu-dai = <&parallel_out>;
+			sound-dai = <&internal_dac>;
 		};
 
 		i2s-out {
 			cpu-dai = <&i2s_out>;
-			cpu-format = "i2s";
-			clock-master = <&i2s_out>;
+			format = "i2s";
+
+			pcm5101 {
+				mclk = <PISTACHIO_MCLK_I2S>;
+				mclk-fs = <128 192 256 384 512 768 1024 1152 1536 2048 3072>;
+				mclk-min-freq = <1024000>;
+				mclk-max-freq = <49152000>;
+			};
 		};
 
 		i2s-in {
 			cpu-dai = <&i2s_in>;
-			cpu-format = "i2s";
+			format = "i2s";
+
+			pcm1802 {
+				mclk = <PISTACHIO_MCLK_DAC>;
+				mclk-fs = <256>;
+				mclk-min-freq = <8192000>;
+				mclk-max-freq = <49152000>;
+				frame-master;
+				bitclock-master;
+			};
 		};
 	};
-
 };
 
 &spfi1 {
