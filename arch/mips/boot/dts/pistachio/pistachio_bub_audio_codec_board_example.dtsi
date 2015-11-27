@@ -7,7 +7,7 @@
  */
 
 #include "pistachio.dtsi"
-#include <dt-bindings/sound/pistachio-bub-audio.h>
+#include <dt-bindings/sound/pistachio-audio.h>
 
 / {
 	supply5v0: supply5v0@0 {
@@ -19,25 +19,37 @@
 
 	supply3v3: supply3v3@0 {
 		compatible = "regulator-fixed";
-		regulator-name = "5V-supply";
+		regulator-name = "3V3-supply";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 	};
 
 	pistachio_audio_card {
-		compatible = "img,pistachio-bub-audio";
+		compatible = "img,pistachio-audio";
 
 		clocks = <&clk_core CLK_AUDIO_PLL>,
-			 <&clk_core CLK_I2S_DIV>,
-			 <&clk_core CLK_AUDIO>,
-			 <&event_timer>;
-		clock-names = "audio_pll", "i2s_mclk", "dac_clk", "evt_clk";
+			 <&clk_core CLK_I2S>,
+			 <&clk_core CLK_AUDIO>;
+		clock-names = "audio_pll", "i2s_mclk", "dac_clk";
 
-		img,daughterboard = <PISTACHIO_DAUGHTERBOARD_CODEC>;
-		img,mclk = <PISTACHIO_MCLK_DAC_CLK>;
 		img,cr-periph = <&cr_periph>;
-		img,cr-top = <&cr_top>;
 		img,event-timer = <&event_timer>;
+
+		img,mute-gpio = <&gpio5 1 GPIO_ACTIVE_LOW>;
+		img,hp-det-gpio = <&gpio5 3 GPIO_ACTIVE_LOW>;
+
+		img,widgets = "Headphone", "Headphones",
+			      "Speaker", "Speakers",
+			      "Line", "RCA Out";
+
+		img,routing = "Headphones", "tpa OUTL",
+			      "Headphones", "tpa OUTR",
+			      "Speakers", "tpa OUTL",
+			      "Speakers", "tpa OUTR",
+			      "RCA Out", "internal-dac AOUTL",
+			      "RCA Out", "internal-dac AOUTR",
+			      "tpa INL", "internal-dac AOUTL",
+			      "tpa INR", "internal-dac AOUTR";
 
 		spdif-out {
 			cpu-dai = <&spdif_out>;
@@ -49,27 +61,52 @@
 
 		parallel-out {
 			cpu-dai = <&parallel_out>;
+			sound-dai = <&internal_dac>;
 			tpa6130a2 = <&tpa6130a2>;
 		};
 
 		i2s-out {
 			cpu-dai = <&i2s_out>;
-			cpu-format = "i2s";
-			pcm3168a-1 = <&pcm3168a_1 0>;
-			pcm3168a-1-format = "i2s";
-			pcm3168a-2 = <&pcm3168a_2 0>;
-			pcm3168a-2-format = "i2s";
-			clock-master = <&i2s_out>;
+			format = "i2s";
+
+			pcm3168a-1 {
+				mclk = <PISTACHIO_MCLK_DAC>;
+				mclk-fs = <128 192 256 384 512 768>;
+				mclk-min-freq = <2048000>;
+				mclk-max-freq = <36864000>;
+				sound-dai = <&pcm3168a_1 0>;
+			};
+
+			pcm3168a-2 {
+				mclk = <PISTACHIO_MCLK_DAC>;
+				mclk-fs = <128 192 256 384 512 768>;
+				mclk-min-freq = <2048000>;
+				mclk-max-freq = <36864000>;
+				sound-dai = <&pcm3168a_2 0>;
+			};
 		};
 
 		i2s-in {
 			cpu-dai = <&i2s_in>;
-			cpu-format = "i2s";
-			pcm3168a-1 = <&pcm3168a_1 1>;
-			pcm3168a-1-format = "i2s";
-			pcm3168a-2 = <&pcm3168a_2 1>;
-			pcm3168a-2-format = "i2s";
-			clock-master = <&pcm3168a_2 1>;
+			format = "i2s";
+
+			pcm3168a-1 {
+				mclk = <PISTACHIO_MCLK_DAC>;
+				mclk-fs = <256 384 512 768>;
+				mclk-min-freq = <2048000>;
+				mclk-max-freq = <36864000>;
+				sound-dai = <&pcm3168a_1 1>;
+			};
+
+			pcm3168a-2 {
+				mclk = <PISTACHIO_MCLK_DAC>;
+				mclk-fs = <256 384 512 768>;
+				mclk-min-freq = <2048000>;
+				mclk-max-freq = <36864000>;
+				sound-dai = <&pcm3168a_2 1>;
+				frame-master;
+				bitclock-master;
+			};
 		};
 	};
 };
@@ -102,6 +139,8 @@
 		VCCAD2-supply = <&supply5v0>;
 		VCCDA1-supply = <&supply5v0>;
 		VCCDA2-supply = <&supply5v0>;
+
+		#sound-dai-cells = <1>;
 	};
 
 	pcm3168a_2: pcm3168a_2@45 {
@@ -128,6 +167,8 @@
 		VCCAD2-supply = <&supply5v0>;
 		VCCDA1-supply = <&supply5v0>;
 		VCCDA2-supply = <&supply5v0>;
+
+		#sound-dai-cells = <1>;
 	};
 };
 
@@ -148,6 +189,8 @@
 
 &i2s_in {
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2s_in_pins>;
 };
 
 &spdif_out {

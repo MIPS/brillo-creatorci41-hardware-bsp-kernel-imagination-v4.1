@@ -35,10 +35,10 @@
 #define	CC2520_RAM_SIZE		640
 #define	CC2520_FIFO_SIZE	128
 
-#define	CC2520_CRYSTAL_FREQ		(32000000)
-#define	CC2520_EXTCLOCK_DEFAULT_FREQ	(1000000)
-#define	CC2520_EXTCLOCK_MAX_FREQ	(16000000)
-#define	CC2520_EXTCLOCK_MIN_FREQ	(1000000)
+#define	CC2520_CRYSTAL_FREQ		32000000
+#define	CC2520_EXTCLOCK_DEFAULT_FREQ	1000000
+#define	CC2520_EXTCLOCK_MAX_FREQ	16000000
+#define	CC2520_EXTCLOCK_MIN_FREQ	1000000
 
 #define	CC2520RAM_TXFIFO	0x100
 #define	CC2520RAM_RXFIFO	0x180
@@ -55,7 +55,7 @@
 
 /* extclock reg */
 #define	CC2520_EXTCLOCK_ENABLE		BIT(5)
-#define	CC2520_EXTCLOCK_MAX_DIV_FACTOR	(32)
+#define	CC2520_EXTCLOCK_MAX_DIV_FACTOR	32
 
 /* IEEE-802.15.4 defined constants (2.4 GHz logical channels) */
 #define	CC2520_MINCHANNEL		11
@@ -936,8 +936,10 @@ static int cc2520_hw_init(struct cc2520_private *priv)
 	}
 
 	ret = cc2520_write_register(priv, CC2520_EXTCLOCK, extclock_reg);
-	if (ret)
+	if (ret) {
+		dev_err(&priv->spi->dev, "Failed to write 'extclock-freq' into CC2520_EXTCLOCK\n");
 		goto err_ret;
+	}
 
 	return 0;
 

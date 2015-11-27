@@ -1,7 +1,7 @@
 /*
- * IMG parallel out controller driver
+ * IMG parallel output controller driver
  *
- * Copyright (C) 2014 Imagination Technologies Ltd.
+ * Copyright (C) 2015 Imagination Technologies Ltd.
  *
  * Author: Damien Horsley <Damien.Horsley@imgtec.com>
  *
@@ -34,6 +34,8 @@
 #define IMG_PRL_OUT_CTL_EDGE_MASK	BIT(2)
 #define IMG_PRL_OUT_CTL_ME_MASK		BIT(1)
 #define IMG_PRL_OUT_CTL_SRST_MASK	BIT(0)
+
+static const char *const img_prl_out_edge_names[] = { "Rising", "Falling" };
 
 struct img_prl_out {
 	spinlock_t lock;
@@ -82,15 +84,21 @@ static inline u32 img_prl_out_readl(struct img_prl_out *prl, u32 reg)
 
 static void img_prl_out_reset(struct img_prl_out *prl)
 {
-	u32 ctl_reg;
+	u32 ctl;
 
-	ctl_reg = img_prl_out_readl(prl, IMG_PRL_OUT_CTL) &
+	ctl = img_prl_out_readl(prl, IMG_PRL_OUT_CTL) &
 			~IMG_PRL_OUT_CTL_ME_MASK;
 
 	reset_control_assert(prl->rst);
 	reset_control_deassert(prl->rst);
 
-	img_prl_out_writel(prl, ctl_reg, IMG_PRL_OUT_CTL);
+	img_prl_out_writel(prl, ctl, IMG_PRL_OUT_CTL);
+}
+
+static int img_prl_out_edge_info(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_info *uinfo)
+{
+	return snd_ctl_enum_info(uinfo, 1, 2, img_prl_out_edge_names);
 }
 
 static int img_prl_out_get_edge(struct snd_kcontrol *kcontrol,
@@ -134,61 +142,13 @@ static int img_prl_out_set_edge(struct snd_kcontrol *kcontrol,
 	return ret;
 }
 
-static int img_prl_out_get_ch_swap(struct snd_kcontrol *kcontrol,
-				  struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_dai *cpu_dai = snd_kcontrol_chip(kcontrol);
-	struct img_prl_out *prl = snd_soc_dai_get_drvdata(cpu_dai);
-	u32 reg;
-	unsigned long flags;
-
-	spin_lock_irqsave(&prl->lock, flags);
-	reg = img_prl_out_readl(prl, IMG_PRL_OUT_CTL);
-	ucontrol->value.integer.value[0] = !!(reg & IMG_PRL_OUT_CTL_CH_MASK);
-	spin_unlock_irqrestore(&prl->lock, flags);
-
-	return 0;
-}
-
-static int img_prl_out_set_ch_swap(struct snd_kcontrol *kcontrol,
-				  struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_dai *cpu_dai = snd_kcontrol_chip(kcontrol);
-	struct img_prl_out *prl = snd_soc_dai_get_drvdata(cpu_dai);
-	unsigned long flags;
-	int ret = 0;
-	u32 reg;
-
-	spin_lock_irqsave(&prl->lock, flags);
-	if (prl->active) {
-		ret = -EBUSY;
-	} else {
-		reg = img_prl_out_readl(prl, IMG_PRL_OUT_CTL);
-		if (ucontrol->value.integer.value[0])
-			reg |= IMG_PRL_OUT_CTL_CH_MASK;
-		else
-			reg &= ~IMG_PRL_OUT_CTL_CH_MASK;
-		img_prl_out_writel(prl, reg, IMG_PRL_OUT_CTL);
-	}
-	spin_unlock_irqrestore(&prl->lock, flags);
-
-	return ret;
-}
-
 static struct snd_kcontrol_new img_prl_out_controls[] = {
 	{
 		.iface = SNDRV_CTL_ELEM_IFACE_PCM,
 		.name = "Parallel Out Edge Falling",
-		.info = snd_ctl_boolean_mono_info,
+		.info = img_prl_out_edge_info,
 		.get = img_prl_out_get_edge,
 		.put = img_prl_out_set_edge
-	},
-	{
-		.iface = SNDRV_CTL_ELEM_IFACE_PCM,
-		.name = "Parallel Out Channel Swap",
-		.info = snd_ctl_boolean_mono_info,
-		.get = img_prl_out_get_ch_swap,
-		.put = img_prl_out_set_ch_swap
 	}
 };
 
@@ -199,8 +159,6 @@ static int img_prl_out_trigger(struct snd_pcm_substream *substream, int cmd,
 	unsigned long flags;
 	int ret = 0;
 	u32 reg;
-
-	dev_dbg(prl->dev, "trigger cmd %d\n", cmd);
 
 	spin_lock_irqsave(&prl->lock, flags);
 
@@ -232,16 +190,14 @@ static int img_prl_out_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	struct img_prl_out *prl = snd_soc_dai_get_drvdata(dai);
-	unsigned int rate, format, channels;
+	unsigned int rate, channels;
 	u32 reg, reg_set = 0;
 	unsigned long flags;
+	snd_pcm_format_t format;
 
 	rate = params_rate(params);
 	format = params_format(params);
 	channels = params_channels(params);
-
-	dev_dbg(prl->dev, "hw_params rate %u channels %u format %u\n",
-			rate, channels, format);
 
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_S32_LE:
@@ -253,7 +209,7 @@ static int img_prl_out_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	if (params_channels(params) != 2)
+	if (channels != 2)
 		return -EINVAL;
 
 	clk_set_rate(prl->clk_ref, rate * 256);
@@ -267,7 +223,7 @@ static int img_prl_out_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-int img_prl_out_start_at(struct snd_pcm_substream *substream,
+static int img_prl_out_start_at(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *cpu_dai, int clock_type,
 		const struct timespec *ts)
 {
@@ -281,7 +237,7 @@ int img_prl_out_start_at(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-int img_prl_out_start_at_abort(struct snd_pcm_substream *substream,
+static int img_prl_out_start_at_abort(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *cpu_dai)
 {
 	struct img_prl_out *prl = snd_soc_dai_get_drvdata(cpu_dai);
@@ -396,8 +352,6 @@ static int img_prl_out_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_suspend;
 
-	dev_dbg(&pdev->dev, "Probe successful\n");
-
 	return 0;
 
 err_suspend:
@@ -427,7 +381,7 @@ static const struct of_device_id img_prl_out_of_match[] = {
 	{ .compatible = "img,parallel-out" },
 	{}
 };
-MODULE_DEVICE_TABLE(of, img_prl_of_match);
+MODULE_DEVICE_TABLE(of, img_prl_out_of_match);
 
 static const struct dev_pm_ops img_prl_out_pm_ops = {
 	SET_RUNTIME_PM_OPS(img_prl_out_suspend,

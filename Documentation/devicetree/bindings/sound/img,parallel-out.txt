@@ -1,6 +1,6 @@
-Imagination Technologies Parallel Out Controller
+Imagination Technologies Parallel Output Controller
 
-Required properties:
+Required Properties:
 
   - compatible : Compatible list, must contain "img,parallel-out".
 
@@ -8,10 +8,10 @@ Required properties:
 
   - reg : Offset and length of the register set for the device.
 
-  - dmas : Generic dma devicetree binding as described in
-  Documentation/devicetree/bindings/dma/dma.txt.
+  - dmas: Contains an entry for each entry in dma-names.
 
-  - dma-names : Includes "tx".
+  - dma-names: Must include the following entry:
+	"tx"
 
   - clocks : Contains an entry for each entry in clock-names.
 
@@ -19,9 +19,9 @@ Required properties:
 	"sys"	The system clock
 	"ref"	The reference clock
 
-  - resets: Must contain a phandle to the parallel out reset signal
+  - resets: Contains a phandle to the parallel out reset signal
 
-  - reset-names: Must contain the reset signal name "rst"
+  - reset-names: Contains the reset signal name "rst"
 
 Optional Properties:
 
@@ -31,13 +31,14 @@ Example:
 
 parallel_out: parallel-out@18100C00 {
 	compatible = "img,parallel-out";
-	#sound-dai-cells = <0>;
 	reg = <0x18100C00 0x100>;
 	interrupts = <GIC_SHARED 19 IRQ_TYPE_LEVEL_HIGH>;
 	dmas = <&mdc 16 0xffffffff 0>;
 	dma-names = "tx";
-	clocks = <&system_clk>, <&clk_audio>;
+	clocks = <&cr_periph SYS_CLK_PAUD_OUT>,
+		 <&clk_core CLK_AUDIO_DAC>;
 	clock-names = "sys", "ref";
 	resets = <&pistachio_reset PISTACHIO_RESET_PRL_OUT>;
 	reset-names = "rst";
+	#sound-dai-cells = <0>;
 };

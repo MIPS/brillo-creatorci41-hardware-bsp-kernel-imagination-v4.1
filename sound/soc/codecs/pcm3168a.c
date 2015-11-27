@@ -22,7 +22,6 @@
 
 #include "pcm3168a.h"
 
-/* For 64-bit frames, the 8 lsbs are ignored by the codec */
 #define PCM3168A_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | \
 			 SNDRV_PCM_FMTBIT_S24_3LE | \
 			 SNDRV_PCM_FMTBIT_S24_LE | \
@@ -36,7 +35,6 @@
 #define PCM3168A_FMT_DSP_B		0x5
 #define PCM3168A_FMT_DSP_MASK		0x4
 
-
 #define PCM3168A_NUM_SUPPLIES 6
 static const char *const pcm3168a_supply_names[PCM3168A_NUM_SUPPLIES] = {
 	"VDD1",
@@ -47,7 +45,6 @@ static const char *const pcm3168a_supply_names[PCM3168A_NUM_SUPPLIES] = {
 	"VCCDA2"
 };
 
-/* codec private data */
 struct pcm3168a_priv {
 	struct regulator_bulk_data supplies[PCM3168A_NUM_SUPPLIES];
 	struct regmap *regmap;
@@ -259,7 +256,7 @@ static const struct snd_soc_dapm_route pcm3168a_dapm_routes[] = {
 	{ "ADC3", NULL, "AIN3R" }
 };
 
-unsigned int pcm3168a_scki_ratios[] = {
+static unsigned int pcm3168a_scki_ratios[] = {
 	768,
 	512,
 	384,
@@ -268,9 +265,10 @@ unsigned int pcm3168a_scki_ratios[] = {
 	128
 };
 
-#define PCM1368A_MAX_SYSCLK		36864000
 #define PCM3168A_NUM_SCKI_RATIOS_DAC	ARRAY_SIZE(pcm3168a_scki_ratios)
 #define PCM3168A_NUM_SCKI_RATIOS_ADC	(ARRAY_SIZE(pcm3168a_scki_ratios) - 2)
+
+#define PCM1368A_MAX_SYSCLK		36864000
 
 static int pcm3168a_reset(struct pcm3168a_priv *pcm3168a)
 {
@@ -328,7 +326,6 @@ static int pcm3168a_set_dai_fmt(struct snd_soc_dai *codec_dai,
 		mask = PCM3168A_ADC_FMTAD_MASK;
 		shift = PCM3168A_ADC_FMTAD_SHIFT;
 	}
-
 
 	switch (format & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_LEFT_J:
@@ -401,33 +398,33 @@ static int pcm3168a_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_codec *codec = dai->codec;
 	struct pcm3168a_priv *pcm3168a = snd_soc_codec_get_drvdata(codec);
-	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
-	u32 i, val, mask, shift, max_ratio, reg, ratio;
-	bool slave_mode = tx ? pcm3168a->dac_slave_mode :
-			pcm3168a->adc_slave_mode;
-	unsigned int fmt = tx ? pcm3168a->dac_fmt :
-			pcm3168a->adc_fmt;
-	unsigned int rate, channels, format;
+	bool tx, slave_mode;
+	u32 val, mask, shift, reg;
+	unsigned int rate, channels, fmt, ratio, max_ratio;
+	int i;
+	snd_pcm_format_t format;
 
 	rate = params_rate(params);
 	format = params_format(params);
 	channels = params_channels(params);
 
-	ratio = pcm3168a->sysclk / params_rate(params);
+	ratio = pcm3168a->sysclk / rate;
 
-	dev_dbg(dai->dev, "%s hw_params rate %u channels %u format %u\n",
-			tx ? "tx" : "rx", rate, channels, format);
-
+	tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 	if (tx) {
 		max_ratio = PCM3168A_NUM_SCKI_RATIOS_DAC;
 		reg = PCM3168A_DAC_PWR_MST_FMT;
 		mask = PCM3168A_DAC_MSDA_MASK;
 		shift = PCM3168A_DAC_MSDA_SHIFT;
+		slave_mode = pcm3168a->dac_slave_mode;
+		fmt = pcm3168a->dac_fmt;
 	} else {
 		max_ratio = PCM3168A_NUM_SCKI_RATIOS_ADC;
 		reg = PCM3168A_ADC_MST_FMT;
 		mask = PCM3168A_ADC_MSAD_MASK;
 		shift = PCM3168A_ADC_MSAD_SHIFT;
+		slave_mode = pcm3168a->adc_slave_mode;
+		fmt = pcm3168a->adc_fmt;
 	}
 
 	for (i = 0; i < max_ratio; i++) {
@@ -441,14 +438,14 @@ static int pcm3168a_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	if ((!slave_mode || (fmt & PCM3168A_FMT_DSP_MASK)) &&
-			(format == SNDRV_PCM_FMTBIT_S24_3LE)) {
+			(format == SNDRV_PCM_FORMAT_S24_3LE)) {
 		dev_err(codec->dev, "48-bit frames not supported in master mode or slave mode using DSP(A/B)\n");
 		return -EINVAL;
 	}
 
 	if ((!slave_mode || ((fmt != PCM3168A_FMT_RIGHT_J) &&
 			(fmt != PCM3168A_FMT_LEFT_J))) &&
-			(format == SNDRV_PCM_FMTBIT_S16)) {
+			(format == SNDRV_PCM_FORMAT_S16)) {
 		dev_err(codec->dev, "32-bit frames are supported only for slave mode using left/right justified\n");
 		return -EINVAL;
 	}
@@ -465,19 +462,15 @@ static int pcm3168a_hw_params(struct snd_pcm_substream *substream,
 		shift = PCM3168A_ADC_FMTAD_SHIFT;
 	}
 
-	if ((fmt == PCM3168A_FMT_RIGHT_J) && (format == SNDRV_PCM_FMTBIT_S32)) {
-		/*
-		 * 32-bit right justified not supported.
-		 * Change to 24-bit left justified
-		 * (PCM3060 will ignore the 8 lsbs for each 32 bit sample)
-		 */
+	/*
+	 * Justification has no effect for S32 and S16 as the whole frame
+	 * is filled with the samples, but the register field
+	 * must be set to a particular value for correct operation
+	 */
+	if ((fmt == PCM3168A_FMT_RIGHT_J) &&
+			(format == SNDRV_PCM_FORMAT_S32)) {
 		fmt = PCM3168A_FMT_LEFT_J;
-	} else if (format == SNDRV_PCM_FMTBIT_S16) {
-		/*
-		 * Justification has no effect here as the whole frame
-		 * is filled with the samples, but the register field
-		 * must be set to right justified 16 bit for correct operation
-		 */
+	} else if (format == SNDRV_PCM_FORMAT_S16) {
 		fmt = PCM3168A_FMT_RIGHT_J_16;
 	}
 

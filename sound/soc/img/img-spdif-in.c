@@ -1,7 +1,7 @@
 /*
- * IMG SPDIF in controller driver
+ * IMG SPDIF input controller driver
  *
- * Copyright (C) 2014 Imagination Technologies Ltd.
+ * Copyright (C) 2015 Imagination Technologies Ltd.
  *
  * Author: Damien Horsley <Damien.Horsley@imgtec.com>
  *
@@ -83,7 +83,7 @@ struct img_spdif_in {
 	unsigned int multi_freqs[IMG_SPDIF_IN_NUM_ACLKGEN];
 	bool active;
 
-	/* Write only registers */
+	/* Write-only registers */
 	unsigned int aclkgen_regs[IMG_SPDIF_IN_NUM_ACLKGEN];
 };
 
@@ -105,12 +105,13 @@ static inline void img_spdif_in_aclkgen_writel(struct img_spdif_in *spdif,
 			IMG_SPDIF_IN_ACLKGEN_START + (index * 0x4));
 }
 
-static int img_spdif_in_check_rate(struct img_spdif_in *spdif,
-		long max_sample_rate, long *actual_freq)
+static int img_spdif_in_check_max_rate(struct img_spdif_in *spdif,
+		unsigned int sample_rate, unsigned long *actual_freq)
 {
 	unsigned long min_freq, freq_t;
 
-	min_freq = max_sample_rate * 2 * 32 * 24;
+	/* Clock rate must be at least 24x the bit rate */
+	min_freq = sample_rate * 2 * 32 * 24;
 
 	freq_t = clk_get_rate(spdif->clk_sys);
 
@@ -123,7 +124,7 @@ static int img_spdif_in_check_rate(struct img_spdif_in *spdif,
 }
 
 static int img_spdif_in_do_clkgen_calc(unsigned int rate, unsigned int *pnom,
-		unsigned int *phld, long clk_rate)
+		unsigned int *phld, unsigned long clk_rate)
 {
 	unsigned int ori, nom, hld;
 
@@ -155,12 +156,11 @@ static int img_spdif_in_do_clkgen_single(struct img_spdif_in *spdif,
 		unsigned int rate)
 {
 	unsigned int nom, hld;
-	unsigned long flags;
+	unsigned long flags, clk_rate;
 	int ret = 0;
-	long clk_rate;
 	u32 reg;
 
-	ret = img_spdif_in_check_rate(spdif, rate, &clk_rate);
+	ret = img_spdif_in_check_max_rate(spdif, rate, &clk_rate);
 	if (ret)
 		return ret;
 
@@ -193,16 +193,15 @@ static int img_spdif_in_do_clkgen_multi(struct img_spdif_in *spdif,
 		unsigned int multi_freqs[])
 {
 	unsigned int nom, hld, rate, max_rate = 0;
-	unsigned long flags;
+	unsigned long flags, clk_rate;
 	int i, ret = 0;
-	long clk_rate;
-	u32 reg, trk_reg, tmp_regs[IMG_SPDIF_IN_NUM_ACLKGEN];
+	u32 reg, trk_reg, temp_regs[IMG_SPDIF_IN_NUM_ACLKGEN];
 
 	for (i = 0; i < IMG_SPDIF_IN_NUM_ACLKGEN; i++)
 		if (multi_freqs[i] > max_rate)
 			max_rate = multi_freqs[i];
 
-	ret = img_spdif_in_check_rate(spdif, max_rate, &clk_rate);
+	ret = img_spdif_in_check_max_rate(spdif, max_rate, &clk_rate);
 	if (ret)
 		return ret;
 
@@ -217,7 +216,7 @@ static int img_spdif_in_do_clkgen_multi(struct img_spdif_in *spdif,
 			IMG_SPDIF_IN_ACLKGEN_NOM_MASK;
 		reg |= (hld << IMG_SPDIF_IN_ACLKGEN_HLD_SHIFT) &
 			IMG_SPDIF_IN_ACLKGEN_HLD_MASK;
-		tmp_regs[i] = reg;
+		temp_regs[i] = reg;
 	}
 
 	spin_lock_irqsave(&spdif->lock, flags);
@@ -230,7 +229,7 @@ static int img_spdif_in_do_clkgen_multi(struct img_spdif_in *spdif,
 	trk_reg = spdif->trk << IMG_SPDIF_IN_ACLKGEN_TRK_SHIFT;
 
 	for (i = 0; i < IMG_SPDIF_IN_NUM_ACLKGEN; i++) {
-		spdif->aclkgen_regs[i] = tmp_regs[i] | trk_reg;
+		spdif->aclkgen_regs[i] = temp_regs[i] | trk_reg;
 		img_spdif_in_aclkgen_writel(spdif, i);
 	}
 
@@ -342,20 +341,19 @@ static int img_spdif_in_set_multi_freq(struct snd_kcontrol *kcontrol,
 		multi_freq = true;
 	}
 
-	if (multi_freq) {
+	if (multi_freq)
 		return img_spdif_in_do_clkgen_multi(spdif, multi_freqs);
-	} else {
-		spin_lock_irqsave(&spdif->lock, flags);
 
-		if (spdif->active) {
-			spin_unlock_irqrestore(&spdif->lock, flags);
-			return -EBUSY;
-		}
+	spin_lock_irqsave(&spdif->lock, flags);
 
-		spdif->multi_freq = false;
-
+	if (spdif->active) {
 		spin_unlock_irqrestore(&spdif->lock, flags);
+		return -EBUSY;
 	}
+
+	spdif->multi_freq = false;
+
+	spin_unlock_irqrestore(&spdif->lock, flags);
 
 	return 0;
 }
@@ -377,7 +375,7 @@ static int img_spdif_in_get_lock_freq(struct snd_kcontrol *kcontrol,
 	struct snd_soc_dai *cpu_dai = snd_kcontrol_chip(kcontrol);
 	struct img_spdif_in *spdif = snd_soc_dai_get_drvdata(cpu_dai);
 	u32 reg;
-	u32 i;
+	int i;
 	unsigned long flags;
 
 	spin_lock_irqsave(&spdif->lock, flags);
@@ -609,34 +607,32 @@ static int img_spdif_in_trigger(struct snd_pcm_substream *substream, int cmd,
 	int ret = 0;
 	u32 reg;
 
-	dev_dbg(spdif->dev, "trigger cmd %d\n", cmd);
-
 	spin_lock_irqsave(&spdif->lock, flags);
-
-	reg = img_spdif_in_readl(spdif, IMG_SPDIF_IN_CTL);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		reg = img_spdif_in_readl(spdif, IMG_SPDIF_IN_CTL);
 		if (spdif->multi_freq)
 			reg &= ~IMG_SPDIF_IN_CTL_SRD_MASK;
 		else
-			reg |= (1 << IMG_SPDIF_IN_CTL_SRD_SHIFT);
+			reg |= (1UL << IMG_SPDIF_IN_CTL_SRD_SHIFT);
 		reg |= IMG_SPDIF_IN_CTL_SRT_MASK;
+		img_spdif_in_writel(spdif, reg, IMG_SPDIF_IN_CTL);
 		spdif->active = true;
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		reg = img_spdif_in_readl(spdif, IMG_SPDIF_IN_CTL);
 		reg &= ~IMG_SPDIF_IN_CTL_SRT_MASK;
+		img_spdif_in_writel(spdif, reg, IMG_SPDIF_IN_CTL);
 		spdif->active = false;
 		break;
 	default:
 		ret = -EINVAL;
 	}
-
-	img_spdif_in_writel(spdif, reg, IMG_SPDIF_IN_CTL);
 
 	spin_unlock_irqrestore(&spdif->lock, flags);
 
@@ -647,14 +643,12 @@ static int img_spdif_in_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	struct img_spdif_in *spdif = snd_soc_dai_get_drvdata(dai);
-	unsigned int rate, channels, format;
+	unsigned int rate, channels;
+	snd_pcm_format_t format;
 
 	rate = params_rate(params);
 	channels = params_channels(params);
 	format = params_format(params);
-
-	dev_dbg(spdif->dev, "hw_params rate %u channels %u format %u\n",
-			rate, channels, format);
 
 	if (format != SNDRV_PCM_FORMAT_S32_LE)
 		return -EINVAL;
@@ -767,8 +761,6 @@ static int img_spdif_in_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_clk_disable;
 
-	dev_dbg(&pdev->dev, "Probe successful\n");
-
 	return 0;
 
 err_clk_disable:
@@ -790,7 +782,7 @@ static const struct of_device_id img_spdif_in_of_match[] = {
 	{ .compatible = "img,spdif-in" },
 	{}
 };
-MODULE_DEVICE_TABLE(of, img_spdif_of_match);
+MODULE_DEVICE_TABLE(of, img_spdif_in_of_match);
 
 static struct platform_driver img_spdif_in_driver = {
 	.driver = {

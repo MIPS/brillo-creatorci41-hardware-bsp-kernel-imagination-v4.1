@@ -1,5 +1,5 @@
 /*
- * IMG I2S out controller driver
+ * IMG I2S output controller driver
  *
  * Copyright (C) 2015 Imagination Technologies Ltd.
  *
@@ -50,8 +50,9 @@
 #define IMG_I2S_OUT_CHAN_CTL_CLKT_MASK		BIT(1)
 #define IMG_I2S_OUT_CHAN_CTL_ME_MASK		BIT(0)
 
+#define IMG_I2S_OUT_CH_STRIDE			0x20
+
 struct img_i2s_out {
-	spinlock_t lock;
 	void __iomem *base;
 	struct clk *clk_sys;
 	struct clk *clk_ref;
@@ -61,15 +62,16 @@ struct img_i2s_out {
 	void __iomem *channel_base;
 	bool force_clk_active;
 	unsigned int active_channels;
-	bool active;
 	struct reset_control *rst;
+	struct snd_soc_dai_driver dai_driver;
 };
 
 static int img_i2s_out_suspend(struct device *dev)
 {
 	struct img_i2s_out *i2s = dev_get_drvdata(dev);
 
-	clk_disable_unprepare(i2s->clk_ref);
+	if (!i2s->force_clk_active)
+		clk_disable_unprepare(i2s->clk_ref);
 
 	return 0;
 }
@@ -79,10 +81,12 @@ static int img_i2s_out_resume(struct device *dev)
 	struct img_i2s_out *i2s = dev_get_drvdata(dev);
 	int ret;
 
-	ret = clk_prepare_enable(i2s->clk_ref);
-	if (ret) {
-		dev_err(dev, "clk_enable failed: %d\n", ret);
-		return ret;
+	if (!i2s->force_clk_active) {
+		ret = clk_prepare_enable(i2s->clk_ref);
+		if (ret) {
+			dev_err(dev, "clk_enable failed: %d\n", ret);
+			return ret;
+		}
 	}
 
 	return 0;
@@ -102,13 +106,13 @@ static inline u32 img_i2s_out_readl(struct img_i2s_out *i2s, u32 reg)
 static inline void img_i2s_out_ch_writel(struct img_i2s_out *i2s,
 					u32 chan, u32 val, u32 reg)
 {
-	writel(val, i2s->channel_base + (chan * 0x20) + reg);
+	writel(val, i2s->channel_base + (chan * IMG_I2S_OUT_CH_STRIDE) + reg);
 }
 
 static inline u32 img_i2s_out_ch_readl(struct img_i2s_out *i2s, u32 chan,
 					u32 reg)
 {
-	return readl(i2s->channel_base + (chan * 0x20) + reg);
+	return readl(i2s->channel_base + (chan * IMG_I2S_OUT_CH_STRIDE) + reg);
 }
 
 static inline u32 img_i2s_out_ch_disable(struct img_i2s_out *i2s, u32 chan)
@@ -149,13 +153,14 @@ static inline void img_i2s_out_enable(struct img_i2s_out *i2s, u32 reg)
 static void img_i2s_out_reset(struct img_i2s_out *i2s)
 {
 	int i;
-	u32 core_ctl;
-	u32 chan_ctl;
+	u32 core_ctl, chan_ctl;
 
 	core_ctl = img_i2s_out_readl(i2s, IMG_I2S_OUT_CTL) &
 			~IMG_I2S_OUT_CTL_ME_MASK &
-			~IMG_I2S_OUT_CTL_CLK_EN_MASK &
 			~IMG_I2S_OUT_CTL_DATA_EN_MASK;
+
+	if (!i2s->force_clk_active)
+		core_ctl &= ~IMG_I2S_OUT_CTL_CLK_EN_MASK;
 
 	chan_ctl = img_i2s_out_ch_readl(i2s, 0, IMG_I2S_OUT_CH_CTL) &
 			~IMG_I2S_OUT_CHAN_CTL_ME_MASK;
@@ -178,12 +183,6 @@ static int img_i2s_out_trigger(struct snd_pcm_substream *substream, int cmd,
 {
 	struct img_i2s_out *i2s = snd_soc_dai_get_drvdata(dai);
 	u32 reg;
-	unsigned long flags;
-	int ret = 0;
-
-	dev_dbg(i2s->dev, "trigger cmd %d\n", cmd);
-
-	spin_lock_irqsave(&i2s->lock, flags);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -194,40 +193,33 @@ static int img_i2s_out_trigger(struct snd_pcm_substream *substream, int cmd,
 			reg |= IMG_I2S_OUT_CTL_CLK_EN_MASK;
 		reg |= IMG_I2S_OUT_CTL_DATA_EN_MASK;
 		img_i2s_out_writel(i2s, reg, IMG_I2S_OUT_CTL);
-		i2s->active = true;
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		img_i2s_out_reset(i2s);
-		i2s->active = false;
 		break;
 	default:
-		ret = -EINVAL;
+		return -EINVAL;
 	}
 
-	spin_unlock_irqrestore(&i2s->lock, flags);
-
-	return ret;
+	return 0;
 }
 
 static int img_i2s_out_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	struct img_i2s_out *i2s = snd_soc_dai_get_drvdata(dai);
-	unsigned int channels, i2s_channels, format;
+	unsigned int channels, i2s_channels;
 	long pre_div_a, pre_div_b, diff_a, diff_b, rate, clk_rate;
-	unsigned long flags;
 	int i;
 	u32 reg, control_reg, control_mask, control_set = 0;
+	snd_pcm_format_t format;
 
 	rate = params_rate(params);
 	format = params_format(params);
 	channels = params_channels(params);
 	i2s_channels = channels / 2;
-
-	dev_dbg(i2s->dev, "hw_params rate %ld channels %u format %u\n",
-			rate, channels, format);
 
 	if (format != SNDRV_PCM_FORMAT_S32_LE)
 		return -EINVAL;
@@ -254,7 +246,7 @@ static int img_i2s_out_hw_params(struct snd_pcm_substream *substream,
 		clk_set_rate(i2s->clk_ref, pre_div_a);
 
 	/*
-	 * Another driver (eg machine driver) may have rejected the above
+	 * Another driver (eg alsa machine driver) may have rejected the above
 	 * change. Get the current rate and set the register bit according to
 	 * the new minimum diff
 	 */
@@ -270,10 +262,8 @@ static int img_i2s_out_hw_params(struct snd_pcm_substream *substream,
 			IMG_I2S_OUT_CTL_ACTIVE_CHAN_SHIFT) &
 			IMG_I2S_OUT_CTL_ACTIVE_CHAN_MASK);
 
-	control_mask = ~IMG_I2S_OUT_CTL_CLK_MASK &
-			~IMG_I2S_OUT_CTL_ACTIVE_CHAN_MASK;
-
-	spin_lock_irqsave(&i2s->lock, flags);
+	control_mask = (u32)(~IMG_I2S_OUT_CTL_CLK_MASK &
+			~IMG_I2S_OUT_CTL_ACTIVE_CHAN_MASK);
 
 	control_reg = img_i2s_out_disable(i2s);
 	control_reg = (control_reg & control_mask) | control_set;
@@ -291,8 +281,6 @@ static int img_i2s_out_hw_params(struct snd_pcm_substream *substream,
 
 	i2s->active_channels = i2s_channels;
 
-	spin_unlock_irqrestore(&i2s->lock, flags);
-
 	return 0;
 }
 
@@ -301,11 +289,8 @@ static int img_i2s_out_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	struct img_i2s_out *i2s = snd_soc_dai_get_drvdata(dai);
 	int i, ret = 0;
 	bool force_clk_active;
-	unsigned long flags;
 	u32 chan_control_mask, control_mask, chan_control_set = 0;
-	u32 reg, control_reg, control_set = 0;
-
-	dev_dbg(i2s->dev, "set format %#x\n", fmt);
+	u32 reg = 0, control_reg, control_set = 0;
 
 	force_clk_active = ((fmt & SND_SOC_DAIFMT_CLOCK_MASK) ==
 			SND_SOC_DAIFMT_CONT);
@@ -352,20 +337,13 @@ static int img_i2s_out_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 		return -EINVAL;
 	}
 
-	control_mask = ~IMG_I2S_OUT_CTL_CLK_EN_MASK &
+	control_mask = (u32)(~IMG_I2S_OUT_CTL_CLK_EN_MASK &
 		~IMG_I2S_OUT_CTL_MASTER_MASK &
 		~IMG_I2S_OUT_CTL_BCLK_POL_MASK &
 		~IMG_I2S_OUT_CTL_FRM_CLK_POL_MASK &
-		~IMG_I2S_OUT_CTL_EXT_EN_CLK_MASK;
+		~IMG_I2S_OUT_CTL_EXT_EN_CLK_MASK);
 
-	chan_control_mask = ~IMG_I2S_OUT_CHAN_CTL_CLKT_MASK;
-
-	spin_lock_irqsave(&i2s->lock, flags);
-
-	if (i2s->active) {
-		spin_unlock_irqrestore(&i2s->lock, flags);
-		return -EBUSY;
-	}
+	chan_control_mask = (u32)~IMG_I2S_OUT_CHAN_CTL_CLKT_MASK;
 
 	control_reg = img_i2s_out_disable(i2s);
 	control_reg = (control_reg & control_mask) | control_set;
@@ -385,69 +363,31 @@ static int img_i2s_out_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 
 	i2s->force_clk_active = force_clk_active;
 
-	spin_unlock_irqrestore(&i2s->lock, flags);
-
 	return ret;
 }
 
-int img_i2s_out_start_at(struct snd_pcm_substream *substream,
+static int img_i2s_out_start_at(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *cpu_dai, int clock_type,
 		const struct timespec *ts)
 {
 	struct img_i2s_out *i2s = snd_soc_dai_get_drvdata(cpu_dai);
-	unsigned long flags;
 	u32 reg;
 
-	spin_lock_irqsave(&i2s->lock, flags);
-
-	/*
-	 * The I2S output block contains two enable signals, clock and data.
-	 * When the clock enable is asserted, generation of the bit clock and
-	 * the first frame will begin in the next cycle of the reference
-	 * clock. When the data enable is asserted, the first samples written
-	 * to the fifo will be played in the frame after next.
-	 *
-	 * When the clock is enabled without the data, zero samples are
-	 * output. When the data is enabled without the clock, no output will
-	 * be present.
-	 *
-	 * There is a single external enable to this block, which can be used
-	 * as the clock or data enable (determined by the status of the
-	 * EXT_EN_CLK bit). Internally, the two enables are equal to an OR of
-	 * the associated register bit (DATA_EN or CLK_EN) and the external
-	 * enable for the selected enable.
-	 *
-	 * The use of the clock enable as the external enable is preferred,
-	 * as this results in higher accuracy.
-	 *
-	 * When force_clk is active, the data enable must be used as the clock
-	 * is already enabled. If force_clk is not active, set the data enable
-	 * now.
-	 */
 	if (!i2s->force_clk_active) {
 		reg = img_i2s_out_readl(i2s, IMG_I2S_OUT_CTL);
 		reg |= IMG_I2S_OUT_CTL_DATA_EN_MASK;
 		img_i2s_out_writel(i2s, reg, IMG_I2S_OUT_CTL);
 	}
 
-	i2s->active = true;
-
-	spin_unlock_irqrestore(&i2s->lock, flags);
-
 	return 0;
 }
 
-int img_i2s_out_start_at_abort(struct snd_pcm_substream *substream,
+static int img_i2s_out_start_at_abort(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *cpu_dai)
 {
 	struct img_i2s_out *i2s = snd_soc_dai_get_drvdata(cpu_dai);
-	unsigned long flags;
-	u32 reg;
 
-	spin_lock_irqsave(&i2s->lock, flags);
-	i2s->active = false;
 	img_i2s_out_reset(i2s);
-	spin_unlock_irqrestore(&i2s->lock, flags);
 
 	return 0;
 }
@@ -468,17 +408,6 @@ static int img_i2s_out_dai_probe(struct snd_soc_dai *dai)
 
 	return 0;
 }
-
-static struct snd_soc_dai_driver img_i2s_out_dai = {
-	.probe = img_i2s_out_dai_probe,
-	.playback = {
-		.channels_min = 2,
-		.channels_max = 0, /* set during probe */
-		.rates = SNDRV_PCM_RATE_8000_192000,
-		.formats = SNDRV_PCM_FMTBIT_S32_LE
-	},
-	.ops = &img_i2s_out_dai_ops
-};
 
 static const struct snd_soc_component_driver img_i2s_out_component = {
 	.name = "img-i2s-out"
@@ -581,16 +510,20 @@ static int img_i2s_out_probe(struct platform_device *pdev)
 			goto err_pm_disable;
 	}
 
-	spin_lock_init(&i2s->lock);
-
 	i2s->active_channels = 1;
 	i2s->dma_data.addr = res->start + IMG_I2S_OUT_TX_FIFO;
 	i2s->dma_data.addr_width = 4;
 	i2s->dma_data.maxburst = 4;
-	img_i2s_out_dai.playback.channels_max = i2s->max_i2s_chan * 2;
+
+	i2s->dai_driver.probe = img_i2s_out_dai_probe;
+	i2s->dai_driver.playback.channels_min = 2;
+	i2s->dai_driver.playback.channels_max = i2s->max_i2s_chan * 2;
+	i2s->dai_driver.playback.rates = SNDRV_PCM_RATE_8000_192000;
+	i2s->dai_driver.playback.formats = SNDRV_PCM_FMTBIT_S32_LE;
+	i2s->dai_driver.ops = &img_i2s_out_dai_ops;
 
 	ret = devm_snd_soc_register_component(&pdev->dev,
-			&img_i2s_out_component, &img_i2s_out_dai, 1);
+			&img_i2s_out_component, &i2s->dai_driver, 1);
 	if (ret)
 		goto err_suspend;
 
@@ -629,7 +562,7 @@ static const struct of_device_id img_i2s_out_of_match[] = {
 	{ .compatible = "img,i2s-out" },
 	{}
 };
-MODULE_DEVICE_TABLE(of, img_i2s_of_match);
+MODULE_DEVICE_TABLE(of, img_i2s_out_of_match);
 
 static const struct dev_pm_ops img_i2s_out_pm_ops = {
 	SET_RUNTIME_PM_OPS(img_i2s_out_suspend,

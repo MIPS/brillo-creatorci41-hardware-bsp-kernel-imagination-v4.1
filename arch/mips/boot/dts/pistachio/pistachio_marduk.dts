@@ -9,7 +9,7 @@
 /dts-v1/;
 
 #include "pistachio.dtsi"
-#include <dt-bindings/sound/pistachio-bub-audio.h>
+#include <dt-bindings/sound/pistachio-audio.h>
 
 / {
 	model = "IMG Marduk";
@@ -46,30 +46,20 @@
 		clock-output-names = "cc2520_ext_clock";
         };
 
-	supply5v0: supply5v0@0 {
-		compatible = "regulator-fixed";
-		regulator-name = "5V-supply";
-		regulator-min-microvolt = <5000000>;
-		regulator-max-microvolt = <5000000>;
-	};
-
 	pistachio_audio_card {
-		compatible = "img,pistachio-bub-audio";
+		compatible = "img,pistachio-audio";
 
 		clocks = <&clk_core CLK_AUDIO_PLL>,
-			 <&clk_core CLK_I2S_DIV>,
-			 <&clk_core CLK_AUDIO>,
-			 <&event_timer>;
-		clock-names = "audio_pll", "i2s_mclk", "dac_clk", "evt_clk";
+			 <&clk_core CLK_I2S>,
+			 <&clk_core CLK_AUDIO>;
+		clock-names = "audio_pll", "i2s_mclk", "dac_clk";
 
-		img,daughterboard = <PISTACHIO_DAUGHTERBOARD_NONE>;
-		img,mclk = <PISTACHIO_MCLK_I2S>;
 		img,cr-periph = <&cr_periph>;
-		img,cr-top = <&cr_top>;
-		img,event-timer = <&event_timer>;
 
 		pinctrl-names = "default";
-		pinctrl-0 = <&i2s_mclk_pin>;
+		pinctrl-0 = <&dac_clk_pin>, <&i2s_mclk_pin>;
+
+		img,mute-gpio = <&gpio5 1 GPIO_ACTIVE_LOW>;
 
 		spdif-out {
 			cpu-dai = <&spdif_out>;
@@ -81,17 +71,17 @@
 
 		parallel-out {
 			cpu-dai = <&parallel_out>;
+			sound-dai = <&internal_dac>;
 		};
 
 		i2s-out {
 			cpu-dai = <&i2s_out>;
-			cpu-format = "i2s";
-			clock-master = <&i2s_out>;
+			format = "i2s";
 		};
 
 		i2s-in {
 			cpu-dai = <&i2s_in>;
-			cpu-format = "i2s";
+			format = "i2s";
 		};
 	};
 
@@ -149,13 +139,13 @@
 	};
 
 	spidev@2 {
-		compatible = "img,click-interface";
+		compatible = "linux,spidev";
 		reg = <2>;
 		spi-max-frequency = <2000000>;
 	};
 
 	spidev@3 {
-		compatible = "img,click-interface";
+		compatible = "linux,spidev";
 		reg = <3>;
 		spi-max-frequency = <2000000>;
 	};
@@ -259,14 +249,17 @@
        num_streams = [02];
 };
 
+
 &i2s_out {
-	img,i2s-channels = <3>;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2s_out_pins>;
 };
 
 &i2s_in {
-	img,i2s-channels = <3>;
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2s_in_pins>;
 };
 
 &i2s_out_pins {

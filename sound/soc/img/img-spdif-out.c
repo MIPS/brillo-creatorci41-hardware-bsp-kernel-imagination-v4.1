@@ -1,7 +1,7 @@
 /*
- * IMG SPDIF out controller driver
+ * IMG SPDIF output controller driver
  *
- * Copyright (C) 2014 Imagination Technologies Ltd.
+ * Copyright (C) 2015 Imagination Technologies Ltd.
  *
  * Author: Damien Horsley <Damien.Horsley@imgtec.com>
  *
@@ -85,19 +85,19 @@ static inline u32 img_spdif_out_readl(struct img_spdif_out *spdif, u32 reg)
 
 static void img_spdif_out_reset(struct img_spdif_out *spdif)
 {
-	u32 ctl_reg, status_low_reg, status_high_reg;
+	u32 ctl, status_low, status_high;
 
-	ctl_reg = img_spdif_out_readl(spdif, IMG_SPDIF_OUT_CTL) &
+	ctl = img_spdif_out_readl(spdif, IMG_SPDIF_OUT_CTL) &
 			~IMG_SPDIF_OUT_CTL_SRT_MASK;
-	status_low_reg = img_spdif_out_readl(spdif, IMG_SPDIF_OUT_CSL);
-	status_high_reg = img_spdif_out_readl(spdif, IMG_SPDIF_OUT_CSH_UV);
+	status_low = img_spdif_out_readl(spdif, IMG_SPDIF_OUT_CSL);
+	status_high = img_spdif_out_readl(spdif, IMG_SPDIF_OUT_CSH_UV);
 
 	reset_control_assert(spdif->rst);
 	reset_control_deassert(spdif->rst);
 
-	img_spdif_out_writel(spdif, ctl_reg, IMG_SPDIF_OUT_CTL);
-	img_spdif_out_writel(spdif, status_low_reg, IMG_SPDIF_OUT_CSL);
-	img_spdif_out_writel(spdif, status_high_reg, IMG_SPDIF_OUT_CSH_UV);
+	img_spdif_out_writel(spdif, ctl, IMG_SPDIF_OUT_CTL);
+	img_spdif_out_writel(spdif, status_low, IMG_SPDIF_OUT_CSL);
+	img_spdif_out_writel(spdif, status_high, IMG_SPDIF_OUT_CSH_UV);
 }
 
 static int img_spdif_out_info(struct snd_kcontrol *kcontrol,
@@ -196,11 +196,8 @@ static int img_spdif_out_trigger(struct snd_pcm_substream *substream, int cmd,
 			struct snd_soc_dai *dai)
 {
 	struct img_spdif_out *spdif = snd_soc_dai_get_drvdata(dai);
-	int ret = 0;
 	u32 reg;
 	unsigned long flags;
-
-	dev_dbg(spdif->dev, "trigger cmd %d\n", cmd);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -218,19 +215,20 @@ static int img_spdif_out_trigger(struct snd_pcm_substream *substream, int cmd,
 		spin_unlock_irqrestore(&spdif->lock, flags);
 		break;
 	default:
-		ret = -EINVAL;
+		return -EINVAL;
 	}
 
-	return ret;
+	return 0;
 }
 
 static int img_spdif_out_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	struct img_spdif_out *spdif = snd_soc_dai_get_drvdata(dai);
-	unsigned int format, channels;
+	unsigned int channels;
 	long pre_div_a, pre_div_b, diff_a, diff_b, rate, clk_rate;
 	u32 reg;
+	snd_pcm_format_t format;
 
 	rate = params_rate(params);
 	format = params_format(params);
@@ -281,7 +279,7 @@ static int img_spdif_out_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-int img_spdif_out_start_at_abort(struct snd_pcm_substream *substream,
+static int img_spdif_out_start_at_abort(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *cpu_dai)
 {
 	struct img_spdif_out *spdif = snd_soc_dai_get_drvdata(cpu_dai);
@@ -428,7 +426,7 @@ static const struct of_device_id img_spdif_out_of_match[] = {
 	{ .compatible = "img,spdif-out" },
 	{}
 };
-MODULE_DEVICE_TABLE(of, img_spdif_of_match);
+MODULE_DEVICE_TABLE(of, img_spdif_out_of_match);
 
 static const struct dev_pm_ops img_spdif_out_pm_ops = {
 	SET_RUNTIME_PM_OPS(img_spdif_out_suspend,
