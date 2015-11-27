@@ -52,6 +52,10 @@
 #define	IR_DIV1_32K_DIV_VAL			0x00000057
 #define	IR_DIV1_DIV1_32K_SCALED_DIV_VAL		0x00000018
 
+#define	CR_TOP_ENETPHYCLKOUT_CTRL		0xB8144230
+#define	ENET_PHYCLKOUT_50M_DIV_VAL		0x00000006
+#define	ENET_PHYCLKOUT_50M_SCALED_DIV_VAL	0x00000001
+
 .text
 FEXPORT(pistachio_sram_suspend)
 LEAF(pistachio_sram_suspend)
@@ -125,6 +129,12 @@ ir_adj:
 	PTR_LI	t1, IR_DIV1_DIV1_32K_SCALED_DIV_VAL
 	PTR_S	t1, (t0)
 
+	/* to support wake-on-lan */
+enet_adj:
+	PTR_LI	t0, CR_TOP_ENETPHYCLKOUT_CTRL
+	PTR_LI	t1, ENET_PHYCLKOUT_50M_SCALED_DIV_VAL
+	PTR_S	t1, (t0)
+
 pll_lock_loop1:
 	PTR_LI	t0, CR_SYS_PLL_STATUS
 	PTR_L	t1, (t0)
@@ -165,6 +175,11 @@ slow_timer_setup:
 ir_setup:
 	PTR_LI	t0, CR_TOP_IRDIV1_CTRL
 	PTR_LI	t1, IR_DIV1_32K_DIV_VAL
+	PTR_S	t1, (t0)
+
+enet_setup:
+	PTR_LI	t0, CR_TOP_ENETPHYCLKOUT_CTRL
+	PTR_LI	t1, ENET_PHYCLKOUT_50M_DIV_VAL
 	PTR_S	t1, (t0)
 
 pll_lock_loop:
