@@ -50,19 +50,32 @@
 	};
 };
 
+&uccpsystem {
+	status = "okay";
+};
+
+&uccphostport {
+	status = "okay";
+};
+
+&uccpbthp {
+	status = "okay";
+};
+
+&uccpdummyhp {
+	status = "okay";
+};
+
 &uart0 {
-	pinctrl-0 = <&uart0_pins>, <&uart0_rts_cts_pins>;
-	pinctrl-names = "default";
-
 	status = "okay";
+	assigned-clock-rates = <114278400>, <1843200>;
 };
 
-&uart1 {
+&sdhost {
 	status = "okay";
-};
 
-&usb {
-	status = "okay";
+	bus-width = <4>;
+	disable-wp;
 };
 
 &i2c3 {
