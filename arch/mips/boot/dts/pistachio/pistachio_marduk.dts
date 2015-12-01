@@ -131,7 +131,7 @@
 		};
 		heartbeat {
 			label = "marduk:red:heartbeat";
-			gpios = <&gpio4 12 GPIO_ACTIVE_LOW>;
+			gpios = <&gpio4 12 GPIO_ACTIVE_HIGH>;
 			linux,default-trigger = "heartbeat";
 		};
 	};
