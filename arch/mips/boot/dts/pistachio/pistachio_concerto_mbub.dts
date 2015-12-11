@@ -11,6 +11,7 @@
 
 #include "pistachio_concerto.dtsi"
 #include <dt-bindings/sound/pistachio-audio.h>
+#include "pistachio_board_uboot.dtsi"
 
 / {
 	model = "Concerto Bring-Up-Board";

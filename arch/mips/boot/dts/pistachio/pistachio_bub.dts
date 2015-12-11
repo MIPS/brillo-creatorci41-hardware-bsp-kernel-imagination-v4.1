@@ -10,6 +10,7 @@
 /dts-v1/;
 
 #include "pistachio_bub_audio_no_daughterboard_example.dtsi"
+#include "pistachio_board_uboot.dtsi"
 
 / {
 	model = "IMG Pistachio BuB";
