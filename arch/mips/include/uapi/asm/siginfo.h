@@ -28,7 +28,9 @@
 
 #define __ARCH_SIGSYS
 
-#include <uapi/asm-generic/siginfo.h>
+#define HAVE_ARCH_COPY_SIGINFO
+
+#include <asm-generic/siginfo.h>
 
 /* We can't use generic siginfo_t, because our si_code and si_errno are swapped */
 typedef struct siginfo {
@@ -107,6 +109,18 @@ typedef struct siginfo {
 	} _sifields;
 } siginfo_t;
 
+
+#include <linux/string.h>
+
+static inline void copy_siginfo(struct siginfo *to, struct siginfo *from)
+{
+	if (from->si_code < 0)
+		memcpy(to, from, sizeof(*to));
+	else
+		/* _sigchld is currently the largest know union member */
+		memcpy(to, from, __ARCH_SI_PREAMBLE_SIZE + sizeof(from->_sifields._sigchld));
+}
+
 /*
  * si_code values
  * Again these have been chosen to be IRIX compatible.
@@ -117,7 +131,5 @@ typedef struct siginfo {
 #define SI_ASYNCIO	-2	/* sent by AIO completion */
 #define SI_TIMER __SI_CODE(__SI_TIMER, -3) /* sent by timer expiration */
 #define SI_MESGQ __SI_CODE(__SI_MESGQ, -4) /* sent by real time mesq state change */
-
-#include <asm-generic/siginfo.h>
 
 #endif /* _UAPI_ASM_SIGINFO_H */
