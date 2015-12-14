@@ -147,6 +147,8 @@ int kgdb_arch_handle_exception(int exception_vector, int signo,
 
 static int kgdb_brk_fn(struct pt_regs *regs, unsigned int instr)
 {
+	if (user_mode(regs))
+		return -1;
 	kgdb_handle_exception(1, SIGTRAP, 0, regs);
 
 	return 0;
@@ -154,6 +156,8 @@ static int kgdb_brk_fn(struct pt_regs *regs, unsigned int instr)
 
 static int kgdb_compiled_brk_fn(struct pt_regs *regs, unsigned int instr)
 {
+	if (user_mode(regs))
+		return -1;
 	compiled_break = 1;
 	kgdb_handle_exception(1, SIGTRAP, 0, regs);
 
@@ -259,15 +263,17 @@ int kgdb_arch_set_breakpoint(struct kgdb_bkpt *bpt)
 	if (err)
 		return err;
 
-	patch_text((void *)bpt->bpt_addr,
-		   *(unsigned int *)arch_kgdb_ops.gdb_bpt_instr);
+	/* Machine is already stopped, so we can use __patch_text() directly */
+	__patch_text((void *)bpt->bpt_addr,
+		     *(unsigned int *)arch_kgdb_ops.gdb_bpt_instr);
 
 	return err;
 }
 
 int kgdb_arch_remove_breakpoint(struct kgdb_bkpt *bpt)
 {
-	patch_text((void *)bpt->bpt_addr, *(unsigned int *)bpt->saved_instr);
+	/* Machine is already stopped, so we can use __patch_text() directly */
+	__patch_text((void *)bpt->bpt_addr, *(unsigned int *)bpt->saved_instr);
 
 	return 0;
 }
