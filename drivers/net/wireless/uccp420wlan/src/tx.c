@@ -573,9 +573,14 @@ int get_band_chanctx(struct mac80211_dev *dev, struct umac_vif *uvif)
 	int band = 0;
 
 	rcu_read_lock();
-	index = uvif->chanctx->index;
-	chanctx = rcu_dereference(dev->chanctx[index]);
-	band = (chanctx->def.chan)->band;
+        if (uvif->chanctx) {
+                index = uvif->chanctx->index;
+        	chanctx = rcu_dereference(dev->chanctx[index]);
+        	band = (chanctx->def.chan)->band;
+        } else {
+                pr_warn("get_band_chanctx: uvif->chanctx is NULL!\n");
+                band = -1;
+        }
 	rcu_read_unlock();
 
 	return band;
@@ -833,28 +838,30 @@ int uccp420wlan_tx_free_buff_req(struct mac80211_dev *dev,
 				int bts_vif = uvif->vif_index;
 
 				ets_band = get_band_chanctx(dev, uvif);
-				spin_lock(&tsf_lock);
-				dev->params->sync[bts_vif].status = 1;
-				memcpy(dev->params->sync[bts_vif].bssid,
-					ivif->bss_conf.bssid, ETH_ALEN);
-				memcpy(dev->params->sync[bts_vif].ts1,
-					tx_done->reserved, 8);
-				memcpy(&dev->params->sync[bts_vif].ts2,
-					(tx_done->reserved + 8), 4);
-				ts2 = dev->params->sync[bts_vif].ts2;
-				dev->params->sync[bts_vif].atu = 0;
+				if (ets_band >= 0) {
+					spin_lock(&tsf_lock);
+					dev->params->sync[bts_vif].status = 1;
+					memcpy(dev->params->sync[bts_vif].bssid,
+					       ivif->bss_conf.bssid, ETH_ALEN);
+					memcpy(dev->params->sync[bts_vif].ts1,
+					       tx_done->reserved, 8);
+					memcpy(&dev->params->sync[bts_vif].ts2,
+					       (tx_done->reserved + 8), 4);
+					ts2 = dev->params->sync[bts_vif].ts2;
+					dev->params->sync[bts_vif].atu = 0;
 
-				if (IEEE80211_BAND_2GHZ == ets_band)
-					ldelta = BTS_AP_24GHZ_ETS;
-				else if (IEEE80211_BAND_5GHZ == ets_band)
-					ldelta = BTS_AP_5GHZ_ETS;
+					if (IEEE80211_BAND_2GHZ == ets_band)
+						ldelta = BTS_AP_24GHZ_ETS;
+					else if (IEEE80211_BAND_5GHZ == ets_band)
+						ldelta = BTS_AP_5GHZ_ETS;
 
-				if (frc_to_atu) {
-					frc_to_atu(ts2,
-					&dev->params->sync[bts_vif].atu, 0);
-				dev->params->sync[bts_vif].atu += ldelta * 1000;
+					if (frc_to_atu) {
+						frc_to_atu(ts2,
+							   &dev->params->sync[bts_vif].atu, 0);
+						dev->params->sync[bts_vif].atu += ldelta * 1000;
+					}
+					spin_unlock(&tsf_lock);
 				}
-				spin_unlock(&tsf_lock);
 			}
 
 			for (i = 0; i < MAX_VIFS; i++) {
