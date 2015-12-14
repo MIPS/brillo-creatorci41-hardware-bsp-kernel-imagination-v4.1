@@ -24,6 +24,7 @@
 #include <asm/prom.h>
 #include <asm/smp-ops.h>
 #include <asm/traps.h>
+#include <asm/reboot.h>
 
 const char *get_system_type(void)
 {
@@ -101,10 +102,30 @@ static void __init mips_ejtag_setup(void)
 			   (unsigned long)base + 0x80);
 }
 
+// Store reboot type into WD_SCRATCH_PROT0
+// which is a register that is preserved across soft resets
+#define PISTACHIO_WD 0x18102100
+static void pistachio_machine_restart(char *command)
+{
+	unsigned int __iomem *info_reg =
+		ioremap(PISTACHIO_WD + 0x20, sizeof(unsigned int));
+	unsigned int boottype = 0xb0010000; /* Normal boot */
+
+	if (command) {
+		if (strcmp(command, "bootloader") == 0 ||
+		    strcmp(command, "fastboot") == 0)
+			boottype |= 0x0e;
+		else if (strcmp(command, "recovery") == 0)
+			boottype |= 0x0c;
+	}
+	__raw_writel(boottype, info_reg);
+}
+
 void __init prom_init(void)
 {
 	board_nmi_handler_setup = mips_nmi_setup;
 	board_ejtag_handler_setup = mips_ejtag_setup;
+	_machine_restart = pistachio_machine_restart;
 
 	mips_cm_probe();
 	mips_cpc_probe();
