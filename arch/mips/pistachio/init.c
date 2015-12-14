@@ -53,13 +53,17 @@ static void __init plat_setup_iocoherency(void)
 	}
 }
 
+extern const char __dtb_pistachio_marduk_begin;
 void __init plat_mem_setup(void)
 {
-	if (fw_arg0 != -2)
-		panic("Device-tree not present");
-
-	__dt_setup_arch((void *)fw_arg1);
-	strlcpy(arcs_cmdline, boot_command_line, COMMAND_LINE_SIZE);
+	if (fw_arg0 == -2) {
+		__dt_setup_arch((void *)fw_arg1);
+		strlcpy(arcs_cmdline, boot_command_line, COMMAND_LINE_SIZE);
+	}
+	else {
+		__dt_setup_arch((void *)&__dtb_pistachio_marduk_begin);
+		fw_init_cmdline();
+	}
 
 	plat_setup_iocoherency();
 }
