@@ -191,6 +191,8 @@ static int __init rd_start_early(char *p)
 	if (start < XKPHYS)
 		start = (int)start;
 #endif
+        if (start < PAGE_OFFSET)
+                start = (unsigned long)__va(start);
 	initrd_start = start;
 	initrd_end += start;
 	return 0;
