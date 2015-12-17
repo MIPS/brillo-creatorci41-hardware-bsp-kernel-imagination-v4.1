@@ -48,6 +48,10 @@
 #define	COUNTERSLOW_DIV1_32K_DIV_VAL		0x0000006F
 #define	COUNTERSLOW_DIV1_32K_SCALED_DIV_VAL	0x0000001F
 
+#define	CR_TOP_IRDIV1_CTRL			0xB814491C
+#define	IR_DIV1_32K_DIV_VAL			0x00000057
+#define	IR_DIV1_DIV1_32K_SCALED_DIV_VAL		0x00000018
+
 .text
 FEXPORT(pistachio_sram_suspend)
 LEAF(pistachio_sram_suspend)
@@ -116,6 +120,11 @@ slow_timer_clk_adj:
 	PTR_LI	t1, COUNTERSLOW_DIV1_32K_SCALED_DIV_VAL
 	PTR_S	t1, (t0)
 
+ir_adj:
+	PTR_LI	t0, CR_TOP_IRDIV1_CTRL
+	PTR_LI	t1, IR_DIV1_DIV1_32K_SCALED_DIV_VAL
+	PTR_S	t1, (t0)
+
 pll_lock_loop1:
 	PTR_LI	t0, CR_SYS_PLL_STATUS
 	PTR_L	t1, (t0)
@@ -151,6 +160,11 @@ sys_pll_setup:
 slow_timer_setup:
 	PTR_LI	t0, CR_TOP_COUNTERSLOWDIV1_CTRL
 	PTR_LI	t1, COUNTERSLOW_DIV1_32K_DIV_VAL
+	PTR_S	t1, (t0)
+
+ir_setup:
+	PTR_LI	t0, CR_TOP_IRDIV1_CTRL
+	PTR_LI	t1, IR_DIV1_32K_DIV_VAL
 	PTR_S	t1, (t0)
 
 pll_lock_loop:
