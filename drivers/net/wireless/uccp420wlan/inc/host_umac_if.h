@@ -40,7 +40,9 @@
 #define MAX_PEND_Q_PER_AC (MAX_PEERS + MAX_VIFS)
 
 #ifdef MULTI_CHAN_SUPPORT
-#define MAX_CHANCTX 2
+#define MAX_CHANCTX MAX_VIFS
+#define MAX_OFF_CHANCTX MAX_VIFS
+#define OFF_CHANCTX_IDX_BASE MAX_CHANCTX
 #endif
 
 #define WEP40_KEYLEN 5
@@ -246,6 +248,10 @@ struct umac_event_mib_stats {
 
 struct umac_event_mac_stats {
 	struct host_mac_msg_hdr hdr;
+	unsigned int roc_start;
+	unsigned int roc_stop;
+	unsigned int roc_complete;
+	unsigned int roc_stop_complete;
 	/* TX related */
 	unsigned int tx_cmd_cnt; /* Num of TX commands received from host */
 	unsigned int tx_done_cnt; /* Num of Tx done events sent to host */
@@ -341,12 +347,6 @@ enum UMAC_PS_ECON_WAKE_TRIG {
 	TRIG_PKT_RCV,
 	TRIG_DISCONNECT
 };
-
-struct umac_event_roc_status {
-	struct host_mac_msg_hdr hdr;
-	unsigned int roc_status;
-} __packed;
-
 
 struct umac_event_ps_econ_wake {
 	struct host_mac_msg_hdr hdr;
@@ -709,7 +709,9 @@ struct cmd_roc {
 	unsigned int roc_ctrl;
 	unsigned int roc_channel;
 	unsigned int roc_duration;
-
+#define ROC_TYPE_NORMAL 0
+#define ROC_TYPE_OFFCHANNEL_TX 1
+	unsigned int roc_type;
 } __packed;
 
 enum POWER_SAVE_TAG {
@@ -1125,6 +1127,11 @@ struct cmd_bt_info {
 #define BT_STATE_OFF 0
 #define BT_STATE_ON  1
 	unsigned int bt_state;
+} __packed;
+
+struct umac_event_roc_status {
+	struct host_mac_msg_hdr hdr;
+	unsigned int roc_status;
 } __packed;
 
 #endif /*_UCCP420HOST_UMAC_IF_H_*/
