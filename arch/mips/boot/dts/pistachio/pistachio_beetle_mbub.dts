@@ -96,6 +96,18 @@
 	};
 };
 
+&pin_i2s_mclk {
+	drive-strength = <2>;
+};
+
+&pin_dac_clk {
+	drive-strength = <2>;
+};
+
+&pins_i2s_out {
+	drive-strength = <2>;
+};
+
 &uart1 {
 	status = "okay";
 };
