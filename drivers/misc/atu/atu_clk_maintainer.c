@@ -579,7 +579,7 @@ static void atu_clk_rate_change_on_the_fly(unsigned long int rate)
 	patu_clk_mtner->mult = mult;
 	patu_clk_mtner->event_timer_rate = rate;
 
-	atu_rate_changed = 0;
+	atu_rate_changed = 1;
 
 	/* Clear the error */
 	patu_clk_mtner->tm_error = 0;
