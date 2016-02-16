@@ -246,7 +246,7 @@
 
 &sdhost {
 	status = "okay";
-        bus-width = <4>;
+	bus-width = <4>;
 	disable-wp;
 };
 
