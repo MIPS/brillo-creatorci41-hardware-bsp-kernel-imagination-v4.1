@@ -11,9 +11,10 @@
 
 #include "pistachio_beetle.dtsi"
 #include <dt-bindings/sound/pistachio-audio.h>
+#include "pistachio_board_uboot.dtsi"
 
 / {
-	model = "IMG Pistachio Concerto mBuB with a Beetle module";
+	model = "Beetle Bring-Up Board";
 	compatible = "img,pistachio-bub", "img,pistachio";
 
 	aliases {
@@ -95,25 +96,16 @@
 	};
 };
 
-&uccpsystem {
-	status = "okay";
+&pin_i2s_mclk {
+	drive-strength = <2>;
 };
 
-&uccphostport {
-	status = "okay";
+&pin_dac_clk {
+	drive-strength = <2>;
 };
 
-&uccpbthp {
-	status = "okay";
-};
-
-&uccpdummyhp {
-	status = "okay";
-};
-
-&uart0 {
-	status = "okay";
-	assigned-clock-rates = <114278400>, <1843200>;
+&pins_i2s_out {
+	drive-strength = <2>;
 };
 
 &uart1 {
@@ -134,13 +126,6 @@
 	status = "okay";
 
 	mac-address = [0123456789AB];
-};
-
-&sdhost {
-	status = "okay";
-
-	bus-width = <4>;
-	disable-wp;
 };
 
 &ir {

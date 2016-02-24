@@ -7,102 +7,41 @@
  * published by the Free Software Foundation.
  */
 
-/dts-v1/;
+#include "pistachio_beetle_mbub.dts"
 
-#include "pistachio_beetle.dtsi"
-#include <dt-bindings/sound/pistachio-audio.h>
-
-/ {
-	model = "IMG Pistachio Concerto mBuB with a Beetle module";
-	compatible = "img,pistachio-bub", "img,pistachio";
-
-	aliases {
-		serial0 = &uart0;
-		serial1 = &uart1;
-	};
-
-	chosen {
-		bootargs = "console=ttyS1,115200n8 earlycon=uart8250,mmio32,0x18101500,115200 root=/dev/sda1 rootwait ro";
-	};
-
-	reg_1v8: fixed-regulator {
-		compatible = "regulator-fixed";
-		regulator-name = "aux_adc_vref";
-		regulator-min-microvolt = <1800000>;
-		regulator-max-microvolt = <1800000>;
-		regulator-boot-on;
-	};
-
-	supply5v0: supply5v0@0 {
-		compatible = "regulator-fixed";
-		regulator-name = "5V-supply";
-		regulator-min-microvolt = <5000000>;
-		regulator-max-microvolt = <5000000>;
-	};
-
-	pistachio_audio_card {
-		compatible = "img,pistachio-audio";
-
-		clocks = <&clk_core CLK_AUDIO_PLL>,
-			 <&clk_core CLK_I2S>,
-			 <&clk_core CLK_AUDIO>;
-		clock-names = "audio_pll", "i2s_mclk", "dac_clk";
-
-		img,cr-periph = <&cr_periph>;
-		img,event-timer = <&event_timer>;
-
-		parallel-out {
-			cpu-dai = <&parallel_out>;
-			sound-dai = <&internal_dac>;
-		};
-
-	};
-
+&ir {
+	status = "disabled";
 };
 
-&uccpsystem {
-	status = "okay";
+&pwm {
+	status = "disabled";
 };
 
-&uccphostport {
-	status = "okay";
+&i2c0 {
+	status = "disabled";
 };
 
-&uccpbthp {
-	status = "okay";
+&i2c1 {
+	status = "disabled";
 };
 
-&uccpdummyhp {
-	status = "okay";
+&i2c2 {
+	status = "disabled";
 };
 
-&uart0 {
-	status = "okay";
-	assigned-clock-rates = <114278400>, <1843200>;
+&i2s_out {
+	status = "disabled";
 };
 
-&uart1 {
-	status = "okay";
+&i2s_in {
+	status = "disabled";
 };
 
-&usb {
-	status = "okay";
+&spdif_out {
+	status = "disabled";
 };
 
-&enet {
-	status = "okay";
-
-	mac-address = [0123456789AB];
-};
-
-&sdhost {
-	status = "okay";
-
-	bus-width = <4>;
-	disable-wp;
-};
-
-&parallel_out {
-	status = "okay";
+&spdif_in {
+	status = "disabled";
 };
 
