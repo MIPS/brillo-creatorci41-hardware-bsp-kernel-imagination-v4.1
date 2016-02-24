@@ -2584,6 +2584,15 @@ static int proc_read_config(struct seq_file *m, void *v)
 	seq_printf(m, "num_vifs = %d\n",
 		   wifi->params.num_vifs);
 
+	seq_puts(m, "vif_macs =");
+	for (i = 0; i <	 wifi->params.num_vifs; i++) {
+		seq_printf(m, " %02x:%02x:%02x:%02x:%02x:%02x",
+			   vif_macs[i][0], vif_macs[i][1], vif_macs[i][2],
+			   vif_macs[i][3], vif_macs[i][4], vif_macs[i][5]
+			);
+	}
+	seq_puts(m, "\n");
+
 	seq_printf(m, "chnl_bw = %d\n",
 		   wifi->params.chnl_bw);
 
@@ -3445,6 +3454,21 @@ static ssize_t proc_write_config(struct file *file,
 		     (val == 1))) {
 			wifi->params.chnl_bw = val;
 
+			uccp420wlan_reinit();
+			pr_err("Re-initializing UMAC ..\n");
+		} else
+			pr_err("Invalid parameter value.\n");
+	} else if (param_get_match(buf, "vif_macs=")) {
+		char *macdata = strstr(buf, "=") + 1;
+		int dataok = 1;
+		int i;
+		for (i = 0; i < wifi->params.num_vifs; i++, macdata += ETH_ALEN*2) {
+			if (conv_str_to_byte(vif_macs[i], macdata, ETH_ALEN) != 0) {
+				dataok = 0;
+				break;
+			}
+		}
+		if (dataok) {
 			uccp420wlan_reinit();
 			pr_err("Re-initializing UMAC ..\n");
 		} else
